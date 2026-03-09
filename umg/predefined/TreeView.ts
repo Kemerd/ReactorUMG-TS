@@ -126,12 +126,6 @@ export class TreeViewConverter extends UMGConverter {
             updated = true;
         }
 
-        // Focusable
-        if (typeof props?.focusable === 'boolean') {
-            scrollBox.bIsFocusable = props.focusable;
-            updated = true;
-        }
-
         return updated;
     }
 

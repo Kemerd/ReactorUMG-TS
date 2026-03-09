@@ -111,7 +111,7 @@ for (const prop of Object.keys(PROP_TO_EVENT_TYPE)) {
 }
 
 /**
- * Set of all recognized event prop names for quick lookup.
+ * Set of all recognized base event prop names for quick lookup.
  */
 export const ALL_EVENT_PROPS: ReadonlySet<string> = new Set([
     ...MOUSE_EVENT_PROPS,
@@ -121,6 +121,20 @@ export const ALL_EVENT_PROPS: ReadonlySet<string> = new Set([
     ...TOUCH_EVENT_PROPS,
     ...WHEEL_EVENT_PROPS,
 ]);
+
+/**
+ * Set of all recognized event prop names INCLUDING capture variants.
+ * e.g. "onClick" AND "onClickCapture". The propagation engine invokes
+ * capture handlers during the capturing phase, so they must be registered.
+ */
+export const ALL_EVENT_PROPS_WITH_CAPTURE: ReadonlySet<string> = (() => {
+    const set = new Set<string>();
+    for (const prop of ALL_EVENT_PROPS) {
+        set.add(prop);
+        set.add(prop + 'Capture');
+    }
+    return set;
+})();
 
 /**
  * Events that do NOT bubble in the DOM (mouseenter, mouseleave, focus, blur).
@@ -290,7 +304,7 @@ export class EventDispatcher {
      * @param parentNode  The parent EventNode (null for root-level widgets)
      * @returns The newly created EventNode
      */
-    registerNode(widget: UE.Widget, umgWidget: any, parentNode: EventNode | null): EventNode {
+    registerNode(widget: UE.Widget, umgWidget: any, parentNode: EventNode | null): EventNode | null {
         if (!widget) return null;
 
         // If already registered, return existing
@@ -371,8 +385,10 @@ export class EventDispatcher {
 
         const hadMouseHandlers = node.hasMouseHandlers();
 
-        // Iterate all known event prop names
-        for (const propName of ALL_EVENT_PROPS) {
+        // Iterate all known event prop names INCLUDING capture variants.
+        // The propagation engine invokes "onClickCapture" during the capturing
+        // phase, so we must register those handlers on the node as well.
+        for (const propName of ALL_EVENT_PROPS_WITH_CAPTURE) {
             const handler = props[propName];
             if (typeof handler === 'function') {
                 node.setHandler(propName, handler);
@@ -579,7 +595,7 @@ export class EventDispatcher {
     }
 
     /** Get the current active drag state */
-    getActiveDrag(): typeof EventDispatcher.prototype._activeDrag {
+    getActiveDrag(): { sourceNode: EventNode; operation: UE.DragDropOperation | null; dataTransfer: any } | null {
         return this._activeDrag;
     }
 

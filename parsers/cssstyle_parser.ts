@@ -261,10 +261,8 @@ export function convertCssToStyles(css: any): Record<string, any> {
  * @returns 
  */
 export function convertCssToStyles2(css: string): Record<string, any> {
-    // Parse the CSS string
     const styles: Record<string, any> = {};
     
-    // Handle empty or invalid input
     if (!css || typeof css !== 'string') {
         return styles;
     }
@@ -279,15 +277,22 @@ export function convertCssToStyles2(css: string): Record<string, any> {
     const declarations = cleanCss.split(';').filter(decl => decl.trim() !== '');
     
     for (const declaration of declarations) {
-        // Split each declaration into property and value
-        const [property, value] = declaration.split(':').map(part => part.trim());
+        // Split on the FIRST colon only; values may contain colons (e.g. url(data:...))
+        const colonIndex = declaration.indexOf(':');
+        if (colonIndex === -1) continue;
+
+        const property = declaration.substring(0, colonIndex).trim();
+        const value = declaration.substring(colonIndex + 1).trim();
         
         if (property && value) {
-            // Convert kebab-case to camelCase
-            const camelCaseProperty = property.replace(/-([a-z])/g, (match, letter) => letter.toUpperCase());
-            
-            // Add to styles object
-            styles[camelCaseProperty] = value;
+            // CSS custom properties (--*) must preserve their original name
+            if (property.startsWith('--')) {
+                styles[property] = value;
+            } else {
+                // Convert kebab-case to camelCase for standard properties
+                const camelCaseProperty = property.replace(/-([a-z])/g, (_match, letter) => letter.toUpperCase());
+                styles[camelCaseProperty] = value;
+            }
         }
     }
 

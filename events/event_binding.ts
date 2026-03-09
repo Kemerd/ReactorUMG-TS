@@ -14,7 +14,7 @@
  */
 
 import * as UE from 'ue';
-import { EventDispatcher, EventNode, ALL_EVENT_PROPS } from './event_dispatcher';
+import { EventDispatcher, EventNode, ALL_EVENT_PROPS, ALL_EVENT_PROPS_WITH_CAPTURE } from './event_dispatcher';
 
 /* ------------------------------------------------------------------ */
 /*  Public API: called from renderer.ts and converter.ts               */
@@ -43,12 +43,9 @@ export function syncEventHandlers(node: EventNode, props: any): void {
  */
 export function hasEventHandlers(props: any): boolean {
     if (!props) return false;
-    for (const propName of ALL_EVENT_PROPS) {
+    // Check both base and capture variants in a single pass
+    for (const propName of ALL_EVENT_PROPS_WITH_CAPTURE) {
         if (typeof props[propName] === 'function') return true;
-    }
-    // Also check capture variants (e.g., onClickCapture)
-    for (const propName of ALL_EVENT_PROPS) {
-        if (typeof props[propName + 'Capture'] === 'function') return true;
     }
     return false;
 }

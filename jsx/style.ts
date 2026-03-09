@@ -42,6 +42,10 @@ export class StyleTagConverter extends ElementConverter {
     }
 
     createNativeWidget(): UE.Widget {
+        // Register CSS rules on initial creation so styles are available
+        // before any child elements are mounted. Returns null because
+        // <style> tags don't produce a visible widget in the tree.
+        this.registerCurrentStyles();
         return null;
     }
 

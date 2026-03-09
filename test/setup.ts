@@ -102,16 +102,36 @@ class PanelSlot {}
 
 class Widget {
   Slot: PanelSlot | null = null;
+  /** Mock parent reference so RemoveFromParent can work in tests */
+  _mockParent: any = null;
+  RemoveFromParent = () => {
+    if (this._mockParent && typeof this._mockParent.RemoveChild === 'function') {
+      this._mockParent.RemoveChild(this);
+    }
+    this._mockParent = null;
+  };
+  SetClipping = (_v: number) => {};
 }
 
 class PanelWidget extends Widget {
   children: any[] = [];
   AddChild = (child: any) => {
     this.children.push(child);
+    if (child && typeof child === 'object') child._mockParent = this;
     return new PanelSlot();
   };
   RemoveChild = (child: any) => {
     this.children = this.children.filter(c => c !== child);
+    if (child && typeof child === 'object') child._mockParent = null;
+  };
+  RemoveChildAt = (index: number) => {
+    if (index >= 0 && index < this.children.length) {
+      const child = this.children[index];
+      this.children.splice(index, 1);
+      if (child && typeof child === 'object') child._mockParent = null;
+      return true;
+    }
+    return false;
   };
   GetChildrenCount = () => this.children.length;
   GetChildAt = (index: number) => this.children[index];
@@ -166,7 +186,7 @@ class SizeBox extends PanelWidget {
   SetMinDesiredWidth = (v: number) => { this.MinDesiredWidth = v; };
   SetMaxDesiredWidth = (v: number) => { this.MaxDesiredWidth = v; };
   GetContent = () => this.children[0];
-  AddChild = (child: any) => { this.children.push(child); return new SizeBoxSlot(); };
+  AddChild = (child: any) => { this.children.push(child); if (child && typeof child === 'object') child._mockParent = this; return new SizeBoxSlot(); };
 }
 
 class Button extends PanelWidget {
@@ -199,6 +219,7 @@ class Button extends PanelWidget {
 
   AddChild = (child: any) => {
     this.children.push(child);
+    if (child && typeof child === 'object') child._mockParent = this;
     return new ButtonSlot();
   };
 
@@ -277,7 +298,7 @@ class ScaleBox extends PanelWidget {
   constructor(public outer: any) { super(); }
   SetStretch = (v: number) => { this.Stretch = v; };
   SetUserSpecifiedScale = (v: number) => { this.UserSpecifiedScale = v; };
-  AddChild = (child: any) => { this.children.push(child); return new ScaleBoxSlot(); };
+  AddChild = (child: any) => { this.children.push(child); if (child && typeof child === 'object') child._mockParent = this; return new ScaleBoxSlot(); };
 }
 
 class ProgressBar extends Widget {
@@ -331,6 +352,7 @@ class WrapBox extends PanelWidget {
   constructor(public outer: any) { super(); }
   AddChildToWrapBox = (child: any) => {
     this.children.push(child);
+    if (child && typeof child === 'object') child._mockParent = this;
     const slot = new WrapBoxSlot();
     (child as any).Slot = slot;
     (this as any).Slots = (this as any).Slots || [];
@@ -368,6 +390,7 @@ class HorizontalBox extends PanelWidget {
   constructor(public outer: any) { super(); }
   AddChildToHorizontalBox = (child: any) => {
     this.children.push(child);
+    if (child && typeof child === 'object') child._mockParent = this;
     const slot = new HorizontalBoxSlot();
     (child as any).Slot = slot;
     (this as any).Slots = (this as any).Slots || [];
@@ -380,6 +403,7 @@ class VerticalBox extends PanelWidget {
   constructor(public outer: any) { super(); }
   AddChildToVerticalBox = (child: any) => {
     this.children.push(child);
+    if (child && typeof child === 'object') child._mockParent = this;
     const slot = new VerticalBoxSlot();
     (child as any).Slot = slot;
     (this as any).Slots = (this as any).Slots || [];
@@ -443,6 +467,7 @@ class CanvasPanel extends PanelWidget {
   constructor(public outer: any) { super(); }
   AddChildToCanvas = (child: any) => {
     this.children.push(child);
+    if (child && typeof child === 'object') child._mockParent = this;
     const slot = new CanvasPanelSlot();
     this.Slots.push(slot);
     (child as any).Slot = slot;
@@ -474,6 +499,7 @@ class GridPanel extends PanelWidget {
   constructor(public outer: any) { super(); }
   AddChildToGrid = (child: any) => {
     this.children.push(child);
+    if (child && typeof child === 'object') child._mockParent = this;
     const slot = new GridSlot();
     this.Slots.push(slot);
     (child as any).Slot = slot;
@@ -497,7 +523,8 @@ class OverlaySlot extends PanelSlot {
 class Overlay extends PanelWidget {
   constructor(public outer: any) { super(); }
   AddChildToOverlay = (child: any) => { 
-    this.children.push(child); 
+    this.children.push(child);
+    if (child && typeof child === 'object') child._mockParent = this;
     const slot = new OverlaySlot(); 
     (child as any).Slot = slot;
     (this as any).Slots = (this as any).Slots || [];
@@ -529,7 +556,8 @@ class UniformGridPanel extends PanelWidget {
   SetMinDesiredSlotHeight = (v: number) => { this.MinDesiredSlotHeight = v; };
   SetSlotPadding = (p: Margin) => { this.SlotPadding = p; };
   AddChildToUniformGrid = (child: any) => { 
-    this.children.push(child); 
+    this.children.push(child);
+    if (child && typeof child === 'object') child._mockParent = this;
     const s = new UniformGridSlot(); 
     this.Slots.push(s); 
     (child as any).Slot = s;
@@ -562,7 +590,7 @@ class Border extends PanelWidget {
   SetHorizontalAlignment = (v: number) => { this.HorizontalAlignment = v; };
   SetVerticalAlignment = (v: number) => { this.VerticalAlignment = v; };
   SetPadding = (p: Margin) => { this.Padding = p; };
-  AddChild = (child: any) => { this.children.push(child); return new BorderSlot(); };
+  AddChild = (child: any) => { this.children.push(child); if (child && typeof child === 'object') child._mockParent = this; return new BorderSlot(); };
 }
 
 function createEventArray() {
@@ -746,6 +774,8 @@ const UEStub = {
     SynchronizeSlotProperties: () => {},
     GetWidgetScreenPixelSize: (_: any) => new Vector2D(10, 10),
     GetCurrentWorld: () => undefined,
+    AddRootWidgetToWidgetTree: () => {},
+    RemoveRootWidgetFromWidgetTree: () => {},
   },
   KismetRenderingLibrary: {
     ImportFileAsTexture2D: (_: any, path: string) => (path ? { texturePath: path } : undefined),

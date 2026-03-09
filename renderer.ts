@@ -209,7 +209,9 @@ class UMGWidget {
     }
 
     update(oldProps: any, newProps: any) {
-        if (this.native !== null) {
+        // Allow converters that produce no native widget (e.g. <style>) to still
+        // receive prop updates by checking canUpdateWithoutNative().
+        if (this.native !== null || this.converter.canUpdateWithoutNative()) {
             this.props = { ...newProps, __parentProps: this.parentProps };
             this.converter.updateWidget(this.native, oldProps, newProps);
 

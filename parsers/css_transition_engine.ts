@@ -576,12 +576,27 @@ let tickRunning = false;
 const TICK_INTERVAL = 16;
 
 /**
- * Generates a unique key for a transition instance.
+ * WeakMap-based widget ID assignment. Gives each widget a unique numeric ID
+ * on first encounter without leaking memory (WeakMap lets GC collect widgets).
+ */
+const widgetIdMap = new WeakMap<object, number>();
+let nextWidgetId = 1;
+
+function getWidgetId(widget: UE.Widget): number {
+    let id = widgetIdMap.get(widget);
+    if (id === undefined) {
+        id = nextWidgetId++;
+        widgetIdMap.set(widget, id);
+    }
+    return id;
+}
+
+/**
+ * Generates a unique key for a transition instance, combining a stable
+ * per-widget numeric ID with the property name.
  */
 function makeTransitionKey(widget: UE.Widget, property: string): string {
-    // Use the widget's hash code or memory address as an identifier
-    const widgetId = (widget as any).GetUniqueID ? (widget as any).GetUniqueID() : widget.GetName();
-    return `${widgetId}::${property}`;
+    return `${getWidgetId(widget)}::${property}`;
 }
 
 /**

@@ -138,6 +138,16 @@ export class UMGConverter extends ElementConverter {
     }
 
     appendChild(parent: UE.Widget, child: UE.Widget, childTypeName: string, childProps: any): void {
+        // Dispatch to the predefined converter so it can apply custom child
+        // management (e.g. ListView spacing, TreeView indentation, TileView
+        // tile sizing, UniformGrid row/column slots, ExpandableArea header/body).
+        // If the predefined converter doesn't override appendChild, it falls
+        // through to this same default via the UMGConverter base class.
+        if (this.proxy) {
+            this.proxy.appendChild(parent, child, childTypeName, childProps);
+            return;
+        }
+
         if (parent instanceof UE.PanelWidget) {
             const slot = parent.AddChild(child);
             this.initPanelChildSlot(slot, childTypeName, childProps);
@@ -145,8 +155,19 @@ export class UMGConverter extends ElementConverter {
     }
     
     removeChild(parent: UE.Widget, child: UE.Widget): void {
+        if (this.proxy) {
+            this.proxy.removeChild(parent, child);
+            return;
+        }
+
         if (parent instanceof UE.PanelWidget) {
             parent.RemoveChild(child);
+        }
+    }
+
+    dispose(): void {
+        if (this.proxy) {
+            this.proxy.dispose();
         }
     }
     

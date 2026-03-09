@@ -2,9 +2,6 @@ import * as UE from 'ue';
 import { UMGConverter } from '../umg_converter';
 import { getAllStyles } from '../../parsers/cssstyle_parser';
 import { convertLengthUnitToSlateUnit } from '../../parsers/css_length_parser';
-import { parseToLinearColor } from '../../parsers/css_color_parser';
-import { parseBrush } from '../../parsers/brush_parser';
-import { parseWidgetSelfAlignment } from '../../parsers/alignment_parser';
 
 /**
  * ListView converter: renders a scrollable, virtualization-ready list of React children.
@@ -104,19 +101,6 @@ export class ListViewConverter extends UMGConverter {
     }
 
     /* ================================================================== */
-    /*  Background styling                                                 */
-    /* ================================================================== */
-    private applyBackground(scrollBox: UE.ScrollBox, props: any): boolean {
-        const bgBrush = props?.backgroundBrush ?? props?.background;
-        if (!bgBrush) return false;
-
-        if (typeof bgBrush === 'object') {
-            scrollBox.WidgetStyle.BackgroundBrush = parseBrush(bgBrush);
-        }
-        return true;
-    }
-
-    /* ================================================================== */
     /*  Selection mode (visual only -- selection state managed in React)   */
     /* ================================================================== */
     private applySelectionProps(_scrollBox: UE.ScrollBox, _props: any): boolean {
@@ -153,19 +137,12 @@ export class ListViewConverter extends UMGConverter {
         updated = this.applyOrientation(scrollBox, props) || updated;
         updated = this.applySpacing(scrollBox, props) || updated;
         updated = this.applyScrollbarStyle(scrollBox, props) || updated;
-        updated = this.applyBackground(scrollBox, props) || updated;
         updated = this.applySelectionProps(scrollBox, props) || updated;
         updated = this.bindScrollEvent(scrollBox, props) || updated;
 
         // Allow overscroll toggle
         if (typeof props?.allowOverscroll === 'boolean') {
             scrollBox.SetAllowOverscroll(props.allowOverscroll);
-            updated = true;
-        }
-
-        // Focusable flag
-        if (typeof props?.focusable === 'boolean') {
-            scrollBox.bIsFocusable = props.focusable;
             updated = true;
         }
 

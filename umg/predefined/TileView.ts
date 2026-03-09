@@ -2,7 +2,6 @@ import * as UE from 'ue';
 import { UMGConverter } from '../umg_converter';
 import { getAllStyles } from '../../parsers/cssstyle_parser';
 import { convertLengthUnitToSlateUnit } from '../../parsers/css_length_parser';
-import { parseBrush } from '../../parsers/brush_parser';
 import { parseWidgetSelfAlignment } from '../../parsers/alignment_parser';
 
 /**

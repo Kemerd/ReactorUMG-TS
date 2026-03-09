@@ -30,15 +30,28 @@ export const EVENT_PHASE_BUBBLING  = 3;
  * Extracts common modifier key state from a UE InputEvent.
  * Works for PointerEvent, KeyEvent, and CharacterEvent since they
  * all inherit from InputEvent.
+ *
+ * NOTE: PuerTS does NOT expose InputEvent methods like IsAltDown()
+ * directly on the JS wrapper. We must go through
+ * WidgetBlueprintLibrary's static InputEvent_Is*Down() helpers.
  */
 function extractModifiers(nativeEvent: any): { altKey: boolean; ctrlKey: boolean; shiftKey: boolean; metaKey: boolean } {
-    // UE InputEvent exposes modifier state via blueprint-accessible methods,
-    // but the PuerTS bindings may not expose them directly. We use the
-    // WidgetBlueprintLibrary static helpers when available, otherwise default.
-    const alt   = nativeEvent?.IsAltDown?.()   ?? false;
-    const ctrl  = nativeEvent?.IsControlDown?.() ?? nativeEvent?.IsCommandDown?.() ?? false;
-    const shift = nativeEvent?.IsShiftDown?.()  ?? false;
-    const meta  = nativeEvent?.IsCommandDown?.() ?? false;
+    if (!nativeEvent) {
+        return { altKey: false, ctrlKey: false, shiftKey: false, metaKey: false };
+    }
+
+    let alt = false, ctrl = false, shift = false, meta = false;
+    try {
+        // WidgetBlueprintLibrary exposes these as static functions that accept
+        // any InputEvent (base class of PointerEvent, KeyEvent, etc.)
+        alt   = UE.WidgetBlueprintLibrary.InputEvent_IsAltDown(nativeEvent);
+        ctrl  = UE.WidgetBlueprintLibrary.InputEvent_IsControlDown(nativeEvent);
+        shift = UE.WidgetBlueprintLibrary.InputEvent_IsShiftDown(nativeEvent);
+        meta  = UE.WidgetBlueprintLibrary.InputEvent_IsCommandDown(nativeEvent);
+    } catch {
+        // Fallback: modifiers unavailable (e.g. synthetic dispatch with no native event)
+    }
+
     return { altKey: alt, ctrlKey: ctrl, shiftKey: shift, metaKey: meta };
 }
 

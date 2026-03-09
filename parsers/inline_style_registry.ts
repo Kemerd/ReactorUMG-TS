@@ -190,29 +190,51 @@ export function parseStyleSheet(cssText: string, declarationParser: (block: stri
 }
 
 /**
- * Extracts @keyframes blocks from CSS text. Returns the text with those blocks removed.
+ * Extracts @keyframes blocks from CSS text using brace-counting for
+ * reliable nested-brace handling. Returns the text with those blocks removed.
  */
 function extractKeyframes(
     css: string,
     declarationParser: (block: string) => Record<string, any>,
     target: Map<string, KeyframeDefinition>
 ): string {
-    // Match @keyframes <name> { ... } including nested braces for individual stops
-    const keyframesRegex = /@keyframes\s+([\w-]+)\s*\{([\s\S]*?)\}\s*\}/g;
     let remaining = css;
-    let match: RegExpExecArray | null;
+    // Find @keyframes declarations and extract their bodies using brace counting
+    const headerRegex = /@keyframes\s+([\w-]+)\s*\{/g;
+    let headerMatch: RegExpExecArray | null;
 
-    while ((match = keyframesRegex.exec(css)) !== null) {
-        const name = match[1];
-        const body = match[2];
-        remaining = remaining.replace(match[0], '');
+    // Collect matches first to avoid mutating string while iterating
+    const blocks: { fullText: string; name: string; body: string }[] = [];
+
+    while ((headerMatch = headerRegex.exec(css)) !== null) {
+        const name = headerMatch[1];
+        const bodyStart = headerMatch.index + headerMatch[0].length;
+
+        // Count braces to find the matching closing brace for the @keyframes block
+        let depth = 1;
+        let pos = bodyStart;
+        while (pos < css.length && depth > 0) {
+            if (css[pos] === '{') depth++;
+            else if (css[pos] === '}') depth--;
+            pos++;
+        }
+
+        // pos now points one past the final closing brace
+        const body = css.substring(bodyStart, pos - 1);
+        const fullText = css.substring(headerMatch.index, pos);
+        blocks.push({ fullText, name, body });
+    }
+
+    // Process each block and remove from remaining text
+    for (const block of blocks) {
+        remaining = remaining.replace(block.fullText, '');
 
         const steps: KeyframeStep[] = [];
         // Parse individual keyframe stops: "0% { ... }" or "from { ... }" or "to { ... }"
         const stopRegex = /([\d.]+%|from|to)\s*\{([^}]*)\}/g;
         let stopMatch: RegExpExecArray | null;
 
-        while ((stopMatch = stopRegex.exec(body)) !== null) {
+        while ((stopMatch = stopRegex.exec(block.body)) !== null) {
             const offsetStr = stopMatch[1].trim().toLowerCase();
             const declarations = declarationParser(stopMatch[2].trim());
 
@@ -234,7 +256,7 @@ function extractKeyframes(
         steps.sort((a, b) => a.offset - b.offset);
 
         if (steps.length > 0) {
-            target.set(name, { name, steps });
+            target.set(block.name, { name: block.name, steps });
         }
     }
 
@@ -242,27 +264,46 @@ function extractKeyframes(
 }
 
 /**
- * Extracts @media blocks from CSS text. Returns the text with those blocks removed.
- * Each @media block is parsed into its own set of rules that can be conditionally applied.
+ * Extracts @media blocks from CSS text using brace-counting for
+ * reliable nested-brace handling. Returns the text with those blocks removed.
  */
 function extractMediaBlocks(
     css: string,
     declarationParser: (block: string) => Record<string, any>,
     target: MediaRule[]
 ): string {
-    // Match @media <condition> { <body> } handling nested braces
-    const mediaRegex = /@media\s+([^{]+)\{([\s\S]*?)\}\s*\}/g;
     let remaining = css;
-    let match: RegExpExecArray | null;
+    const headerRegex = /@media\s+([^{]+)\{/g;
+    let headerMatch: RegExpExecArray | null;
 
-    while ((match = mediaRegex.exec(css)) !== null) {
-        const condition = match[1].trim();
-        const body = match[2].trim();
-        remaining = remaining.replace(match[0], '');
+    // Collect matches first to avoid mutating string while iterating
+    const blocks: { fullText: string; condition: string; body: string }[] = [];
 
-        const rules = parseRuleBlock(body, declarationParser);
+    while ((headerMatch = headerRegex.exec(css)) !== null) {
+        const condition = headerMatch[1].trim();
+        const bodyStart = headerMatch.index + headerMatch[0].length;
+
+        // Brace-count to find the matching closing brace
+        let depth = 1;
+        let pos = bodyStart;
+        while (pos < css.length && depth > 0) {
+            if (css[pos] === '{') depth++;
+            else if (css[pos] === '}') depth--;
+            pos++;
+        }
+
+        const body = css.substring(bodyStart, pos - 1).trim();
+        const fullText = css.substring(headerMatch.index, pos);
+        blocks.push({ fullText, condition, body });
+    }
+
+    // Process each block and remove from remaining text
+    for (const block of blocks) {
+        remaining = remaining.replace(block.fullText, '');
+
+        const rules = parseRuleBlock(block.body, declarationParser);
         if (rules.length > 0) {
-            target.push({ condition, rules });
+            target.push({ condition: block.condition, rules });
         }
     }
 

@@ -30,6 +30,7 @@ export {
     EventDispatcher,
     EventNode,
     ALL_EVENT_PROPS,
+    ALL_EVENT_PROPS_WITH_CAPTURE,
     MOUSE_EVENT_PROPS,
     KEYBOARD_EVENT_PROPS,
     FOCUS_EVENT_PROPS,

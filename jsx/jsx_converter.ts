@@ -84,4 +84,12 @@ export class JSXConverter extends ElementConverter {
             parent.RemoveChild(child);
         }
     }
+
+    dispose(): void {
+        // Let the proxied converter release any internal resources
+        // (e.g. VideoConverter / AudioConverter media pipeline cleanup)
+        if (this.proxy && typeof this.proxy.dispose === 'function') {
+            this.proxy.dispose();
+        }
+    }
 }
