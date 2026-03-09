@@ -58,6 +58,18 @@ export class UMGConverter extends ElementConverter {
         this.proxy = null;
     }
 
+    /**
+     * Eagerly initializes the internal proxy converter without creating
+     * a native widget.  Required when a recycled widget is used and
+     * createNativeWidget is skipped — the proxy must exist so that
+     * update() can delegate type-specific property application.
+     */
+    ensureReady(): void {
+        if (!this.proxy) {
+            this.proxy = this.createProxy(this.typeName);
+        }
+    }
+
     private createProxy(typeName: string): UMGConverter {
         // Create proxy converter for predefined widget types
         let proxy: UMGConverter;
@@ -120,9 +132,7 @@ export class UMGConverter extends ElementConverter {
      * React控件定义到UWidget的转换规则：
      */
     createNativeWidget(): UE.Widget {
-        if (!this.proxy) {
-            this.proxy = this.createProxy(this.typeName);
-        }
+        this.ensureReady();
 
         if (this.proxy) {
             return this.proxy.createNativeWidget();

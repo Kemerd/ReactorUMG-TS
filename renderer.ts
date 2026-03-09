@@ -192,6 +192,11 @@ class UMGWidget {
             const recycled = pool.acquire(this.typeName);
             if (recycled) {
                 this.native = recycled;
+                // The converter's proxy chain is created lazily inside
+                // createNativeWidget. Since we skip that for recycled
+                // widgets, ensureReady initialises the proxy so update()
+                // can delegate to type-specific property logic.
+                this.converter.ensureReady();
                 // Re-apply all props to the recycled widget so it reflects
                 // the current element's desired state
                 this.converter.updateWidget(this.native, {}, this.props);
@@ -568,6 +573,44 @@ const hostConfig : Reconciler.HostConfig<string, any, RootContainer, UMGWidget, 
         // Dispose converter resources and release native UObject references.
         if (node && typeof node.dispose === 'function') {
             node.dispose();
+        }
+    },
+
+    // -- Suspense visibility hooks --
+    // React Suspense uses these to temporarily hide content while a
+    // fallback is being displayed.  Without them, children behind a
+    // Suspense boundary remain visible when they should be hidden.
+
+    hideInstance(instance: UMGWidget) {
+        if (instance?.native) {
+            instance.native.SetVisibility(UE.ESlateVisibility.Collapsed);
+        }
+    },
+
+    hideTextInstance(textInstance: UMGWidget) {
+        if (textInstance?.native) {
+            textInstance.native.SetVisibility(UE.ESlateVisibility.Collapsed);
+        }
+    },
+
+    unhideInstance(instance: UMGWidget, props: any) {
+        if (instance?.native) {
+            // Restore visibility from the element's props; default to Visible
+            const styles = props?.style;
+            const vis = styles?.visibility ?? styles?.visible;
+            if (vis === 'hidden') {
+                instance.native.SetVisibility(UE.ESlateVisibility.Hidden);
+            } else if (vis === 'collapse' || vis === 'collapsed') {
+                instance.native.SetVisibility(UE.ESlateVisibility.Collapsed);
+            } else {
+                instance.native.SetVisibility(UE.ESlateVisibility.SelfHitTestInvisible);
+            }
+        }
+    },
+
+    unhideTextInstance(textInstance: UMGWidget, _text: string) {
+        if (textInstance?.native) {
+            textInstance.native.SetVisibility(UE.ESlateVisibility.SelfHitTestInvisible);
         }
     },
 

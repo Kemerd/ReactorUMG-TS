@@ -35,15 +35,24 @@ import * as UE from 'ue';
  * Complex widgets with extensive internal state (e.g., ComboBox, EditableText)
  * are excluded because resetting their state is error-prone.
  */
+/**
+ * Only widget types that go through UMGConverter (not ContainerConverter)
+ * and have a matching predefined converter or NativeWidgetConverter are
+ * safe for recycling.
+ *
+ * Excluded:
+ *   - 'CanvasPanel' / 'WrapBox' — listed in UMGConverter.predefinedWidgets
+ *     but have NO converter file, so require() would crash.
+ *   - 'Overlay' — matched by containerKeywords → goes through
+ *     ContainerConverter whose wrapper-widget setup can't be replayed
+ *     via ensureReady alone.
+ */
 const POOLABLE_TYPES: ReadonlySet<string> = new Set([
-    // Layout containers (most frequently created/destroyed)
+    // Layout containers with NativeWidgetConverter fallback
     'HorizontalBox',
     'VerticalBox',
-    'CanvasPanel',
-    'Overlay',
-    'WrapBox',
 
-    // Common leaf widgets
+    // Common leaf widgets with predefined converters
     'TextBlock',
     'Image',
     'Border',

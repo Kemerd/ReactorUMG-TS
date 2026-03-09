@@ -105,6 +105,17 @@ export abstract class ElementConverter {
     abstract removeChild(parent: UE.Widget, child: UE.Widget): void;
     canUpdateWithoutNative(): boolean { return false; }
 
+    /**
+     * Ensures internal converter state (proxy chain, etc.) is fully
+     * initialized without creating a native widget.  Called on the
+     * recycled-widget path so that updateWidget can properly delegate
+     * to type-specific update logic.
+     *
+     * Default is a no-op.  Converters with lazy initialization
+     * (UMGConverter, ContainerConverter) override this.
+     */
+    ensureReady(): void {}
+
     /** Reference to the native widget, kept for transition cleanup on dispose */
     protected _nativeRef: UE.Widget | null = null;
 
