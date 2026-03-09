@@ -1,4 +1,5 @@
 import { getInlineStyles, normalizePseudo } from './inline_style_registry';
+import { buildScopeChain, resolveStyleVariables } from './css_variable_registry';
 
 function mergeStyleRecords(target: Record<string, any>, addition?: Record<string, any>) {
     if (addition && Object.keys(addition).length > 0) {
@@ -219,7 +220,12 @@ export function getAllStyles(type: string, props: any, pseudo?: string): Record<
     //
     // So the order of precedence (from lowest to highest) is:
     // typeStyle < attributeTypeStyles < classNameStyles < parentDescendantStyles < idStyle < inlineStyles
-    return {  ...typeStyle, ...attributeTypeStyles, ...classNameStyles, ...parentDescendantStyles, ...idStyle, ...inlineStyles };
+    const merged = {  ...typeStyle, ...attributeTypeStyles, ...classNameStyles, ...parentDescendantStyles, ...idStyle, ...inlineStyles };
+
+    // Resolve any CSS custom property references (var(--name)) in the merged styles.
+    // Build a scope chain from most-specific to least-specific for cascading lookup.
+    const scopeChain = buildScopeChain(props?.id, props?.className, type);
+    return resolveStyleVariables(merged, scopeChain);
 }
 
 export function convertCssToStyles(css: any): Record<string, any> {

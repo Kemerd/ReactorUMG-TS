@@ -401,10 +401,13 @@ export function parseVisibility(visibility: string, hitTest?: string): UE.ESlate
         switch (hitTest) {
             case 'self-invisible':
                 result = UE.ESlateVisibility.SelfHitTestInvisible;
+                break;
             case 'self-children-invisible':
                 result = UE.ESlateVisibility.HitTestInvisible;
+                break;
             default:
-                result = UE.ESlateVisibility.Visible;
+                // Preserve the visibility value parsed above when hitTest is unrecognized
+                break;
         }
     }
 

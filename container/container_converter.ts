@@ -8,6 +8,7 @@ import { convertLengthUnitToSlateUnit, parseScale, parseAspectRatio } from "../p
 import { safeParseFloat } from "../misc/utils";
 import { parseWidgetSelfAlignment } from "../parsers/alignment_parser";
 import { hasFontStyles, setupFontStyles } from "../parsers/css_font_parser";
+import { processBorderStyles, applyOutlineToBrush, parseBoxShadow } from "../parsers/css_border_parser";
 
 /**
  * 将容器参数以及布局参数转换中通用的功能实现在这个类中
@@ -51,20 +52,44 @@ export class ContainerConverter extends ElementConverter {
         return null;
     }
 
+    /**
+     * Maps a container element type + its CSS display/position properties
+     * to the appropriate UMG container type.
+     *
+     * Mapping logic:
+     *   display: grid          -> GridConverter
+     *   position: absolute     -> CanvasConverter  (removed from flow)
+     *   position: fixed        -> CanvasConverter  (viewport-anchored)
+     *   position: relative     -> OverlayConverter (stays in flow, allows offsets)
+     *   position: static (default) -> FlexConverter (normal document flow)
+     */
     private parseContainerType(type: string) {
         const normalizedType = (type || '').toLowerCase();
         const semanticDivs = ['form', 'section', 'article', 'main', 'header', 'footer', 'nav', 'aside'];
+
         if (normalizedType === 'div' || semanticDivs.includes(normalizedType)) {
             const display = this.containerStyle?.display || 'flex';
+
             if (display === 'grid') {
                 return 'grid';
-            } else {
-                const position = this.containerStyle?.position || 'absolute';
-                if (position === 'relative') {
+            }
+
+            // CSS position determines the container strategy
+            const position = (this.containerStyle?.position || 'static').toString().trim().toLowerCase();
+
+            switch (position) {
+                case 'absolute':
+                case 'fixed':
+                    // Absolute/fixed positioning maps to CanvasPanel for free placement
+                    return 'canvas';
+                case 'relative':
+                    // Relative positioning uses Overlay (allows top/left offsets within flow)
                     return 'overlay';
-                } else {
+                case 'static':
+                case 'sticky':
+                default:
+                    // Normal flow uses flex layout
                     return 'flex';
-                }
             }
         } else {
             return normalizedType;
@@ -82,9 +107,14 @@ export class ContainerConverter extends ElementConverter {
         const backgroundImage = style?.backgroundImage;
         const backgroundPosition = style?.backgroundPosition;
 
+        // Check if we have any border/border-radius/box-shadow CSS properties too
+        const borderOutline = processBorderStyles(style);
+        const boxShadow = parseBoxShadow(style?.boxShadow, style);
+
         const usingBackground = backgroundColor || backgroundImage || backgroundPosition || background;
+        const usingBorderStyling = borderOutline.hasOutline || borderOutline.drawAsRoundedBox || boxShadow;
         
-        if (!usingBackground) {
+        if (!usingBackground && !usingBorderStyling) {
             return widget;
         } else {
             const parsedBackgroundProps = parseBackgroundProps(style);
@@ -94,10 +124,43 @@ export class ContainerConverter extends ElementConverter {
                 borderWidget = new UE.Border(this.outer);
             }
             const border = borderWidget as UE.Border;
+
             if (parsedBackgroundProps?.image) {
+                // Apply border-radius/outline to the background image brush
+                if (usingBorderStyling) {
+                    applyOutlineToBrush(parsedBackgroundProps.image, borderOutline);
+                }
                 border.SetBrush(parsedBackgroundProps.image);
                 useBorder = true;
+            } else if (usingBorderStyling) {
+                // No background image, but we have border styling. Create a brush
+                // configured for rounded box rendering with the outline settings.
+                const brush = new UE.SlateBrush();
+                brush.DrawAs = borderOutline.drawAsRoundedBox
+                    ? UE.ESlateBrushDrawType.RoundedBox
+                    : UE.ESlateBrushDrawType.NoDrawType;
+
+                applyOutlineToBrush(brush, borderOutline);
+
+                // Apply box-shadow as a tint on the brush outline when present
+                if (boxShadow && !borderOutline.color) {
+                    const outlineSettings = brush.OutlineSettings;
+                    if (outlineSettings) {
+                        outlineSettings.Color.SpecifiedColor.R = boxShadow.color.r;
+                        outlineSettings.Color.SpecifiedColor.G = boxShadow.color.g;
+                        outlineSettings.Color.SpecifiedColor.B = boxShadow.color.b;
+                        outlineSettings.Color.SpecifiedColor.A = boxShadow.color.a;
+                        // Use the shadow's spread + blur as outline width if no explicit border
+                        if (borderOutline.width === 0) {
+                            outlineSettings.Width = Math.max(1, boxShadow.spreadRadius + boxShadow.blurRadius * 0.5);
+                        }
+                    }
+                }
+
+                border.SetBrush(brush);
+                useBorder = true;
             }
+
             if (parsedBackgroundProps?.color) {
                 border.SetBrushColor(parsedBackgroundProps.color);
                 useBorder = true;
@@ -228,10 +291,88 @@ export class ContainerConverter extends ElementConverter {
         }
     }
 
+    /** Tracks the ScrollBox wrapper when overflow:scroll/auto is active */
+    scrollBoxWrapper: UE.ScrollBox | null = null;
+
+    /**
+     * Tracks z-index values for children in non-Canvas containers.
+     * Used to determine insertion order when z-index is specified.
+     * Maps child widget -> z-index value.
+     */
+    protected childZIndices: Map<UE.Widget, number> = new Map();
+
+    /**
+     * Determines if the container's overflow style requires scrolling.
+     * Returns the orientation to use, or null if no scrolling is needed.
+     */
+    private detectScrollOverflow(): 'horizontal' | 'vertical' | 'both' | null {
+        const style = this.containerStyle;
+        if (!style) return null;
+
+        const overflow = (style.overflow || '').toString().trim().toLowerCase();
+        const overflowX = (style.overflowX || '').toString().trim().toLowerCase();
+        const overflowY = (style.overflowY || '').toString().trim().toLowerCase();
+
+        const isScrollable = (v: string) => v === 'scroll' || v === 'auto';
+
+        // Global overflow shorthand
+        if (isScrollable(overflow)) {
+            return 'both';
+        }
+
+        const scrollX = isScrollable(overflowX);
+        const scrollY = isScrollable(overflowY);
+
+        if (scrollX && scrollY) return 'both';
+        if (scrollX) return 'horizontal';
+        if (scrollY) return 'vertical';
+
+        return null;
+    }
+
+    /**
+     * Wraps a widget in a ScrollBox if overflow:scroll/auto is detected.
+     * Returns the original widget if no wrapping is needed.
+     */
+    private setupScrollOverflow(widget: UE.Widget, existingScrollBox?: UE.ScrollBox): UE.Widget {
+        const scrollDirection = this.detectScrollOverflow();
+        if (!scrollDirection) {
+            return widget;
+        }
+
+        let scrollBox: UE.ScrollBox;
+        if (existingScrollBox) {
+            scrollBox = existingScrollBox;
+        } else {
+            scrollBox = new UE.ScrollBox(this.outer);
+        }
+
+        // Configure orientation based on the detected overflow direction
+        if (scrollDirection === 'horizontal') {
+            scrollBox.SetOrientation(UE.EOrientation.Orient_Horizontal);
+        } else {
+            // 'vertical' and 'both' default to vertical scrolling
+            // (UMG ScrollBox is single-axis; vertical covers most use cases)
+            scrollBox.SetOrientation(UE.EOrientation.Orient_Vertical);
+        }
+
+        // Only add the child widget on initial creation (not updates)
+        if (!existingScrollBox) {
+            scrollBox.AddChild(widget);
+            this.scrollBoxWrapper = scrollBox;
+        }
+
+        UE.UMGManager.SynchronizeWidgetProperties(scrollBox);
+        return scrollBox;
+    }
+
     private initClipChildWidget(parentWidget: UE.Widget) {
         const style = this.containerStyle;
+        const overflow = (style?.overflow || '').toString().trim().toLowerCase();
         const visibility = style?.visibility;
-        if (visibility === 'clip') {
+
+        // Apply clipping for overflow:hidden
+        if (overflow === 'hidden' || visibility === 'clip') {
             parentWidget.SetClipping(UE.EWidgetClipping.ClipToBounds);
         }
     }
@@ -260,6 +401,49 @@ export class ContainerConverter extends ElementConverter {
         }
     }
 
+    /**
+     * Extracts the z-index value from a child's style, returning 0 as the default.
+     * Supports both 'zIndex' and 'zOrder' property names.
+     */
+    protected extractZIndex(childStyle: any): number {
+        if (!childStyle) return 0;
+
+        const raw = childStyle.zIndex ?? childStyle.zOrder;
+        if (raw === undefined || raw === null) return 0;
+
+        const parsed = parseInt(String(raw), 10);
+        return isNaN(parsed) ? 0 : parsed;
+    }
+
+    /**
+     * Determines the correct insertion index for a child with a given z-index
+     * within a panel widget, so that children remain sorted by z-index.
+     * Higher z-index values are appended later (rendered on top).
+     *
+     * @param parent    - The panel widget to query existing children
+     * @param zIndex    - The z-index of the child being inserted
+     * @returns The index at which the child should be inserted, or -1 to append
+     */
+    protected findZIndexInsertionPoint(parent: UE.PanelWidget, zIndex: number): number {
+        if (!parent || zIndex === 0) return -1; // default z-index appends at end
+
+        const childCount = parent.GetChildrenCount();
+        if (childCount === 0) return -1;
+
+        // Walk existing children and find the first one with a higher z-index
+        for (let i = 0; i < childCount; i++) {
+            const existingChild = parent.GetChildAt(i);
+            if (!existingChild) continue;
+
+            const existingZ = this.childZIndices.get(existingChild) ?? 0;
+            if (existingZ > zIndex) {
+                return i;
+            }
+        }
+
+        return -1; // append at end (this child has the highest z-index)
+    }
+
     initChildPadding(panelSlot: UE.PanelSlot, childStyle: any): void {
         if (!panelSlot || typeof (panelSlot as any).SetPadding !== 'function') {
             return;
@@ -285,6 +469,11 @@ export class ContainerConverter extends ElementConverter {
         if (this.proxy) {
             widget = this.proxy.createNativeWidget();
             this.originalWidget = widget;
+
+            // Wrap in ScrollBox if overflow:scroll/auto is specified
+            if (widget) {
+                widget = this.setupScrollOverflow(widget);
+            }
 
             if (widget) {
                 widget = this.setupBackground(widget);

@@ -20,8 +20,9 @@ export class UniformGridConverter extends ContainerConverter {
         if (cellPadding) {
             let padding = null;
             if (typeof cellPadding === 'object') {
-                padding = new UE.Margin(cellPadding.top, cellPadding.right, 
-                                        cellPadding.bottom, cellPadding.left);
+                // UE.Margin constructor order: Left, Top, Right, Bottom
+                padding = new UE.Margin(cellPadding.left, cellPadding.top,
+                                        cellPadding.right, cellPadding.bottom);
 
             } else if (typeof cellPadding === 'string') {
                 padding = convertToUEMargin(props?.style, cellPadding, '', '', '', '');

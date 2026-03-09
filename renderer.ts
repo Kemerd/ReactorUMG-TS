@@ -1,7 +1,17 @@
-﻿import * as Reconciler from 'react-reconciler';
+import * as Reconciler from 'react-reconciler';
 import * as puerts from 'puerts';
 import * as UE from 'ue';
 import { createElementConverter, ElementConverter } from './converter';
+import {
+    createEventNode,
+    destroyEventNode,
+    syncEventHandlers,
+    hasEventHandlers,
+    disposeEventSystem,
+    routeKeyboardEvent,
+    routeTabNavigation,
+    EventDispatcher,
+} from './events';
 
 const REACT_ELEMENT_TYPE = typeof Symbol === 'function' ? Symbol.for('react.element') : 0;
 
@@ -140,10 +150,16 @@ class UMGWidget {
     typeName: string;
     props: any;
     rootContainer: RootContainer;
-    // isContainer: boolean;
     converter: ElementConverter;
     parentFiber: any;
     parentProps: any;
+
+    /**
+     * Ordered list of child UMGWidgets managed by this node.
+     * Kept in sync with the native UMG widget tree so that insertBefore
+     * can reconstruct child order without a native "insert at index" API.
+     */
+    children: UMGWidget[] = [];
 
     constructor(typeName: string, props: any, rootContainer: RootContainer, parentFiber?: any) {
         this.typeName = typeName;
@@ -176,20 +192,117 @@ class UMGWidget {
         }
     }
 
-    appendChild(child: UMGWidget) {
+    /**
+     * Determines whether a child should be appended to the native widget tree.
+     * Some converters (e.g. <option>) set forceAppend to indicate they should
+     * participate in appendChild even when they have no native widget.
+     */
+    private shouldAppendNative(child: UMGWidget): boolean {
         const shouldForceAppend = (child.converter as any)?.forceAppend === true;
-        if ((shouldForceAppend && this.native && child ) 
-            || (this.native && child && child.native)) {
+        return (shouldForceAppend && this.native && !!child)
+            || (this.native && !!child && !!child.native);
+    }
+
+    appendChild(child: UMGWidget) {
+        // Track the child in our ordered list
+        this.children.push(child);
+
+        if (this.shouldAppendNative(child)) {
             this.converter.appendChild(this.native, child.native, child.typeName, child.props);
         }
     }
 
     removeChild(child: UMGWidget) {
-        const shouldForceAppend = (child.converter as any)?.forceAppend === true;
-        if ((shouldForceAppend && this.native && child ) || 
-            (this.native && child && child.native)) {
+        // Remove from our ordered tracking
+        const idx = this.children.indexOf(child);
+        if (idx !== -1) {
+            this.children.splice(idx, 1);
+        }
+
+        if (this.shouldAppendNative(child)) {
             this.converter.removeChild(this.native, child.native);
         }
+    }
+
+    /**
+     * Inserts `child` immediately before `beforeChild` in this widget's child list.
+     *
+     * UMG panels do not expose an "insert at index" API, so we remove all
+     * children from the insertion point onward, append the new child, then
+     * re-append the displaced siblings. The converter's appendChild recreates
+     * each slot with the correct alignment/padding/sizing from the child's
+     * stored props, keeping the rebuild transparent.
+     */
+    insertBefore(child: UMGWidget, beforeChild: UMGWidget) {
+        if (!this.native) return;
+
+        const beforeIdx = this.children.indexOf(beforeChild);
+        if (beforeIdx === -1) {
+            // beforeChild not found -- fall back to a plain append
+            this.appendChild(child);
+            return;
+        }
+
+        // If the child is already one of our children (move case), untrack it first
+        const existingIdx = this.children.indexOf(child);
+        if (existingIdx !== -1) {
+            this.children.splice(existingIdx, 1);
+            // Also detach from native parent so we can re-add in the right spot
+            if (child.native) {
+                child.native.RemoveFromParent();
+            }
+        }
+
+        // Recalculate insertion index after potential removal shifted indices
+        const insertIdx = this.children.indexOf(beforeChild);
+        this.children.splice(insertIdx, 0, child);
+
+        // Collect the children that come AFTER the newly inserted child
+        // (i.e. the original beforeChild and everything after it)
+        const displacedStart = insertIdx + 1;
+        const displaced = this.children.slice(displacedStart);
+
+        // Detach displaced siblings from the native tree
+        for (let i = displaced.length - 1; i >= 0; i--) {
+            if (displaced[i].native) {
+                displaced[i].native.RemoveFromParent();
+            }
+        }
+
+        // Append the new child at what is now the tail of the native panel
+        if (this.shouldAppendNative(child)) {
+            this.converter.appendChild(this.native, child.native, child.typeName, child.props);
+        }
+
+        // Re-append every displaced sibling so slot config is recreated from props
+        for (const c of displaced) {
+            if (this.shouldAppendNative(c)) {
+                this.converter.appendChild(this.native, c.native, c.typeName, c.props);
+            }
+        }
+    }
+
+    /**
+     * Recursively disposes this widget and all tracked children.
+     * Called by the reconciler's detachDeletedInstance after the widget has
+     * already been removed from the native tree.  Releases references so the
+     * GC can reclaim UObject pointers promptly.
+     */
+    dispose() {
+        // Let the converter clean up any non-widget resources (e.g. inline style registrations)
+        if (this.converter) {
+            this.converter.dispose();
+            this.converter = null;
+        }
+
+        // Recursively dispose every child subtree we still track
+        for (const child of this.children) {
+            child.dispose();
+        }
+        this.children.length = 0;
+
+        // Null out native reference so UObject pointer is released
+        this.native = null;
     }
 
     private getParentProps() {
@@ -207,24 +320,43 @@ class UMGWidget {
 class RootContainer {
     public widgetTree: UE.WidgetTree;
     public reconcilerContainer: any;
+
+    /** Top-level children attached to the widget tree root. */
+    public children: UMGWidget[] = [];
+
     constructor(nativePtr: UE.WidgetTree) {
         this.widgetTree = nativePtr;
     }
 
     appendChild(child: UMGWidget) {
+        this.children.push(child);
         if (child?.native) {
             UE.UMGManager.AddRootWidgetToWidgetTree(this.widgetTree, child.native);
         }
     }
 
     removeChild(child: UMGWidget) {
+        const idx = this.children.indexOf(child);
+        if (idx !== -1) {
+            this.children.splice(idx, 1);
+        }
         if (child?.native) {
             UE.UMGManager.RemoveRootWidgetFromWidgetTree(this.widgetTree, child.native);
         }
     }
 
+    /**
+     * Inserts a child before another in the root container.
+     * Root containers typically hold a single child, so this falls back
+     * to a simple append for pragmatic correctness.
+     */
+    insertBefore(child: UMGWidget, _beforeChild: UMGWidget) {
+        this.appendChild(child);
+    }
+
     clearAllWidgets() {
         this.widgetTree.RootWidget = null;
+        this.children.length = 0;
     }
 }
 
@@ -284,14 +416,31 @@ const hostConfig : Reconciler.HostConfig<string, any, RootContainer, UMGWidget, 
         parent.removeChild(child);
     },
 
-    clearContainer(container: RootContainer) {},
+    // -- Insertion ordering (required for keyed list reordering) --
+    insertBefore(parent: UMGWidget, child: UMGWidget, beforeChild: UMGWidget) {
+        parent.insertBefore(child, beforeChild);
+    },
+
+    insertInContainerBefore(container: RootContainer, child: UMGWidget, beforeChild: UMGWidget) {
+        container.insertBefore(child, beforeChild);
+    },
+
+    clearContainer(container: RootContainer) {
+        container.clearAllWidgets();
+    },
     getCurrentEventPriority(){ return 0; },
     getInstanceFromNode(node: any){ return undefined; },
     beforeActiveInstanceBlur() {},
     afterActiveInstanceBlur() {},
     prepareScopeUpdate(scopeInstance: any, instance: any) {},
     getInstanceFromScope(scopeInstance: any) { return null; },
-    detachDeletedInstance(node: any){},
+    detachDeletedInstance(node: UMGWidget) {
+        // Called by the reconciler after a node is permanently removed.
+        // Dispose converter resources and release native UObject references.
+        if (node && typeof node.dispose === 'function') {
+            node.dispose();
+        }
+    },
 
     supportsMutation: true,
     isPrimaryRenderer: true,

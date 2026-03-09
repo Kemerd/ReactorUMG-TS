@@ -48,6 +48,12 @@ export class OverlayConverter extends ContainerConverter {
             return;
         }
 
+        // Track z-index for render ordering in the overlay
+        const zIndex = this.extractZIndex(style);
+        if (zIndex !== 0) {
+            this.childZIndices.set(child, zIndex);
+        }
+
         const alignment = parseWidgetSelfAlignment(style);
         overlaySlot.SetHorizontalAlignment(alignment.horizontal);
         overlaySlot.SetVerticalAlignment(alignment.vertical);

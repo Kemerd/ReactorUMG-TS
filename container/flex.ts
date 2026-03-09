@@ -258,7 +258,13 @@ export class FlexConverter extends ContainerConverter {
         // if (!update)
         //     wrapBox.SetHorizontalAlignment(UE.EHorizontalAlignment.HAlign_Fill);
 
+        // Apply flow direction preference based on direction and reverse settings
         if (this.isRow) {
+            wrapBox.FlowDirectionPreference = this.isReverse
+                ? UE.EFlowDirectionPreference.RightToLeft
+                : UE.EFlowDirectionPreference.LeftToRight;
+        } else {
+            // For column wrap, reverse affects the cross-axis wrapping direction
             wrapBox.FlowDirectionPreference = this.isReverse
                 ? UE.EFlowDirectionPreference.RightToLeft
                 : UE.EFlowDirectionPreference.LeftToRight;
@@ -321,15 +327,19 @@ export class FlexConverter extends ContainerConverter {
         const panelParent = parent as UE.PanelWidget;
         const existingCount = panelParent ? panelParent.GetChildrenCount() : 0;
 
-        // && this.boxWidgetWhenUsingWrapbox
-        if (parent instanceof UE.WrapBox ) {
+        // Track z-index for this child for future insertion ordering
+        const zIndex = this.extractZIndex(childStyle);
+        if (zIndex !== 0) {
+            this.childZIndices.set(child, zIndex);
+        }
+
+        if (parent instanceof UE.WrapBox) {
             const wrapBox = parent as UE.WrapBox;
             const wrapSlot = wrapBox.AddChildToWrapBox(child);
             this.initWrapBoxSlot(wrapSlot, childStyle);
             super.initChildPadding(wrapSlot, childStyle);
             this.applyFlexSizingToSlot(wrapSlot, childStyle);
             return;
-            // parent = this.boxWidgetWhenUsingWrapbox;
         }
 
         if (parent instanceof UE.HorizontalBox) {

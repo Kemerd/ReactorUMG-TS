@@ -112,39 +112,259 @@ export function getInlineStyles(kind: SelectorKind, key: string, pseudo?: string
     return result;
 }
 
+/**
+ * Parsed @media rule containing a condition string and the nested CSS rules.
+ */
+export interface MediaRule {
+    condition: string;
+    rules: ParsedRule[];
+}
+
+/**
+ * Result of parsing a <style> block: regular rules plus any @media blocks.
+ */
+export interface ParsedStyleSheet {
+    rules: ParsedRule[];
+    mediaRules: MediaRule[];
+    keyframes: Map<string, KeyframeDefinition>;
+}
+
+/**
+ * A single keyframe step with a percentage offset and associated styles.
+ */
+export interface KeyframeStep {
+    offset: number; // 0.0 to 1.0
+    styles: Record<string, any>;
+}
+
+/**
+ * Complete @keyframes definition: an ordered list of steps.
+ */
+export interface KeyframeDefinition {
+    name: string;
+    steps: KeyframeStep[];
+}
+
+/**
+ * Parses inline CSS text into structured rules, extracting @media blocks,
+ * @keyframes definitions, and regular selector rules.
+ *
+ * Custom properties (--*) are automatically extracted and registered in the
+ * CSS variable registry during parsing.
+ */
 export function parseInlineCss(cssText: string, declarationParser: (block: string) => Record<string, any>): ParsedRule[] {
+    const sheet = parseStyleSheet(cssText, declarationParser);
+    return sheet.rules;
+}
+
+/**
+ * Full-fidelity style sheet parser that returns rules, @media blocks,
+ * and @keyframes definitions.
+ */
+export function parseStyleSheet(cssText: string, declarationParser: (block: string) => Record<string, any>): ParsedStyleSheet {
+    const result: ParsedStyleSheet = {
+        rules: [],
+        mediaRules: [],
+        keyframes: new Map()
+    };
+
     if (!cssText || typeof cssText !== 'string') {
-        return [];
+        return result;
     }
 
+    // Strip C-style comments
     const sanitized = cssText.replace(/\/\*[\s\S]*?\*\//g, '');
-    const regex = /([^{}]+)\{([^{}]*)\}/g;
-    const rules: ParsedRule[] = [];
+
+    // Extract and process @keyframes blocks before the main parse
+    const afterKeyframes = extractKeyframes(sanitized, declarationParser, result.keyframes);
+
+    // Extract and process @media blocks
+    const afterMedia = extractMediaBlocks(afterKeyframes, declarationParser, result.mediaRules);
+
+    // Parse remaining top-level rules
+    result.rules = parseRuleBlock(afterMedia, declarationParser);
+
+    return result;
+}
+
+/**
+ * Extracts @keyframes blocks from CSS text. Returns the text with those blocks removed.
+ */
+function extractKeyframes(
+    css: string,
+    declarationParser: (block: string) => Record<string, any>,
+    target: Map<string, KeyframeDefinition>
+): string {
+    // Match @keyframes <name> { ... } including nested braces for individual stops
+    const keyframesRegex = /@keyframes\s+([\w-]+)\s*\{([\s\S]*?)\}\s*\}/g;
+    let remaining = css;
     let match: RegExpExecArray | null;
 
-    while ((match = regex.exec(sanitized)) !== null) {
+    while ((match = keyframesRegex.exec(css)) !== null) {
+        const name = match[1];
+        const body = match[2];
+        remaining = remaining.replace(match[0], '');
+
+        const steps: KeyframeStep[] = [];
+        // Parse individual keyframe stops: "0% { ... }" or "from { ... }" or "to { ... }"
+        const stopRegex = /([\d.]+%|from|to)\s*\{([^}]*)\}/g;
+        let stopMatch: RegExpExecArray | null;
+
+        while ((stopMatch = stopRegex.exec(body)) !== null) {
+            const offsetStr = stopMatch[1].trim().toLowerCase();
+            const declarations = declarationParser(stopMatch[2].trim());
+
+            let offset = 0;
+            if (offsetStr === 'from') {
+                offset = 0;
+            } else if (offsetStr === 'to') {
+                offset = 1;
+            } else {
+                offset = parseFloat(offsetStr) / 100;
+            }
+
+            if (!isNaN(offset) && declarations && Object.keys(declarations).length > 0) {
+                steps.push({ offset, styles: declarations });
+            }
+        }
+
+        // Sort steps by offset for correct interpolation ordering
+        steps.sort((a, b) => a.offset - b.offset);
+
+        if (steps.length > 0) {
+            target.set(name, { name, steps });
+        }
+    }
+
+    return remaining;
+}
+
+/**
+ * Extracts @media blocks from CSS text. Returns the text with those blocks removed.
+ * Each @media block is parsed into its own set of rules that can be conditionally applied.
+ */
+function extractMediaBlocks(
+    css: string,
+    declarationParser: (block: string) => Record<string, any>,
+    target: MediaRule[]
+): string {
+    // Match @media <condition> { <body> } handling nested braces
+    const mediaRegex = /@media\s+([^{]+)\{([\s\S]*?)\}\s*\}/g;
+    let remaining = css;
+    let match: RegExpExecArray | null;
+
+    while ((match = mediaRegex.exec(css)) !== null) {
+        const condition = match[1].trim();
+        const body = match[2].trim();
+        remaining = remaining.replace(match[0], '');
+
+        const rules = parseRuleBlock(body, declarationParser);
+        if (rules.length > 0) {
+            target.push({ condition, rules });
+        }
+    }
+
+    return remaining;
+}
+
+/**
+ * Parses a block of CSS text (without @-rules) into an array of ParsedRule objects.
+ * Custom property declarations (--*) are extracted and registered automatically.
+ */
+function parseRuleBlock(css: string, declarationParser: (block: string) => Record<string, any>): ParsedRule[] {
+    const rules: ParsedRule[] = [];
+    if (!css) return rules;
+
+    const regex = /([^{}]+)\{([^{}]*)\}/g;
+    let match: RegExpExecArray | null;
+
+    while ((match = regex.exec(css)) !== null) {
         const selectorGroup = match[1].trim();
         const declarationBlock = match[2].trim();
         if (!selectorGroup || !declarationBlock) continue;
 
-        const declarationMap = declarationParser(declarationBlock);
+        let declarationMap = declarationParser(declarationBlock);
         if (!declarationMap || Object.keys(declarationMap).length === 0) continue;
 
+        // Extract and register CSS custom properties (--*) from the declarations
+        const { extractAndRegisterVariables } = require('./css_variable_registry');
         const selectors = selectorGroup.split(',').map(sel => sel.trim()).filter(Boolean);
+
         for (const selector of selectors) {
             if (!selector) continue;
             const { kind, key, pseudo } = dissectSelector(selector);
             if (!key) continue;
-            rules.push({
-                kind,
-                key,
-                pseudo,
-                styles: { ...declarationMap }
-            });
+
+            // Build the scope string for variable registration
+            const scope = kind === 'class' ? `.${key}` : kind === 'id' ? `#${key}` : key;
+            const cleanedDeclarations = extractAndRegisterVariables(scope, { ...declarationMap });
+
+            if (Object.keys(cleanedDeclarations).length > 0) {
+                rules.push({
+                    kind,
+                    key,
+                    pseudo,
+                    styles: cleanedDeclarations
+                });
+            }
         }
     }
 
     return rules;
+}
+
+/**
+ * Evaluates a @media condition string against the current viewport dimensions.
+ * Supports: min-width, max-width, min-height, max-height, orientation.
+ *
+ * @param condition     - The media query condition (e.g. "(min-width: 800px)")
+ * @param viewportSize  - Current viewport dimensions { width, height }
+ * @returns true if the condition matches
+ */
+export function evaluateMediaCondition(
+    condition: string,
+    viewportSize: { width: number; height: number }
+): boolean {
+    if (!condition || !viewportSize) {
+        return false;
+    }
+
+    const normalized = condition.toLowerCase().trim();
+
+    // Check for orientation queries
+    if (normalized.includes('orientation')) {
+        const isLandscape = viewportSize.width >= viewportSize.height;
+        if (normalized.includes('landscape') && !isLandscape) return false;
+        if (normalized.includes('portrait') && isLandscape) return false;
+    }
+
+    // Parse dimensional conditions: (min-width: 800px), (max-height: 600px), etc.
+    const dimensionRegex = /\(\s*(min|max)-(width|height)\s*:\s*(\d+(?:\.\d+)?)(px|em|rem)?\s*\)/g;
+    let dimMatch: RegExpExecArray | null;
+    let allConditionsMet = true;
+
+    while ((dimMatch = dimensionRegex.exec(normalized)) !== null) {
+        const minOrMax = dimMatch[1];
+        const widthOrHeight = dimMatch[2];
+        let threshold = parseFloat(dimMatch[3]);
+        const unit = dimMatch[4] || 'px';
+
+        // Convert em/rem to px (using standard 16px base)
+        if (unit === 'em' || unit === 'rem') {
+            threshold *= 16;
+        }
+
+        const actual = widthOrHeight === 'width' ? viewportSize.width : viewportSize.height;
+
+        if (minOrMax === 'min' && actual < threshold) {
+            allConditionsMet = false;
+        }
+        if (minOrMax === 'max' && actual > threshold) {
+            allConditionsMet = false;
+        }
+    }
+
+    return allConditionsMet;
 }
 
 function dissectSelector(selector: string): { kind: SelectorKind; key: string; pseudo: string } {

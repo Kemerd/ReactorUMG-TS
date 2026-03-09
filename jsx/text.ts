@@ -7,6 +7,14 @@ import { JSXConverter } from './jsx_converter';
 import { isReactElementInChildren } from '../misc/utils';
 import * as UE from 'ue';
 
+/**
+ * Checks whether the given type name represents an anchor (<a>) element
+ * that should be rendered as a clickable link.
+ */
+function isAnchorElement(typeName: string): boolean {
+    return typeName === 'a';
+}
+
 type TextStyleProps = Record<string, any>;
 
 export class TextConverter extends JSXConverter {
@@ -82,6 +90,13 @@ export class TextConverter extends JSXConverter {
         }
     };
     private readonly loweredTypeName: string;
+
+    /* ------------------------------------------------------------------ */
+    /*  Anchor (<a>) specific state: button wrapper for click handling     */
+    /* ------------------------------------------------------------------ */
+    private anchorButton?: UE.Button;
+    private anchorTextBlock?: UE.TextBlock;
+    private anchorClickCallback?: () => void;
 
     constructor(typeName: string, props: any, outer: any) {
         super(typeName, props, outer);
@@ -339,17 +354,139 @@ export class TextConverter extends JSXConverter {
         textBlock.SetText(content ?? '');
     }
 
+    /* ================================================================== */
+    /*  Anchor (<a>) tag: transparent button wrapping a TextBlock          */
+    /* ================================================================== */
+
+    /**
+     * Creates a transparent UButton wrapping a TextBlock for anchor elements.
+     * Clicking the button opens the href URL or fires the onClick callback.
+     */
+    private createAnchorWidget(): UE.Widget {
+        // Build the text block as usual
+        const text = new UE.TextBlock(this.outer);
+        this.setupTextBlockProperties(text, this.props);
+        const content = this.extractTextContent(this.props);
+        this.applyTextContent(text, content);
+        this.anchorTextBlock = text;
+
+        // Wrap in a transparent button for click interactivity
+        const button = new UE.Button(this.outer);
+        this.anchorButton = button;
+
+        // Make button background fully transparent so only text is visible
+        const clearBrush = (brush: UE.SlateBrush) => {
+            if (!brush) return;
+            brush.DrawAs = UE.ESlateBrushDrawType.NoDrawType;
+        };
+        clearBrush(button.WidgetStyle.Normal);
+        clearBrush(button.WidgetStyle.Hovered);
+        clearBrush(button.WidgetStyle.Pressed);
+        clearBrush(button.WidgetStyle.Disabled);
+        button.SetBackgroundColor(new UE.LinearColor(0, 0, 0, 0));
+
+        // Zero out padding so the button hugs the text tightly
+        button.WidgetStyle.NormalPadding = new UE.Margin(0, 0, 0, 0);
+        button.WidgetStyle.PressedPadding = new UE.Margin(0, 0, 0, 0);
+
+        // Add text as child of the button
+        const slot = button.AddChild(text);
+        if (slot) {
+            if (typeof (slot as any).SetHorizontalAlignment === 'function') {
+                (slot as any).SetHorizontalAlignment(UE.EHorizontalAlignment.HAlign_Fill);
+            }
+            if (typeof (slot as any).SetVerticalAlignment === 'function') {
+                (slot as any).SetVerticalAlignment(UE.EVerticalAlignment.VAlign_Center);
+            }
+        }
+
+        // Bind click event: open href URL or fire onClick
+        this.bindAnchorClickEvent(button, this.props);
+
+        UE.UMGManager.SynchronizeWidgetProperties(text);
+        UE.UMGManager.SynchronizeWidgetProperties(button);
+
+        return button;
+    }
+
+    /**
+     * Binds the click handler for anchor elements.
+     * If href is specified, clicking opens the URL in the system browser.
+     * If onClick is specified, it fires as a standard React event handler.
+     */
+    private bindAnchorClickEvent(button: UE.Button, props: any): void {
+        // Remove previous handler if re-binding
+        if (this.anchorClickCallback) {
+            button.OnClicked.Remove(this.anchorClickCallback);
+            this.anchorClickCallback = undefined;
+        }
+
+        const href = props?.href;
+        const onClick = props?.onClick;
+        const target = props?.target;
+
+        this.anchorClickCallback = () => {
+            // Fire user-provided onClick handler first
+            if (typeof onClick === 'function') {
+                try {
+                    onClick({ target: { href, tagName: 'a' }, preventDefault: () => {} });
+                } catch (e) {
+                    console.warn('Anchor onClick handler error:', e);
+                }
+            }
+
+            // Open URL in system browser when href is present
+            if (href && typeof href === 'string') {
+                try {
+                    UE.KismetSystemLibrary.LaunchURL(href);
+                } catch (e) {
+                    console.warn('Failed to launch URL:', href, e);
+                }
+            }
+        };
+
+        button.OnClicked.Add(this.anchorClickCallback);
+    }
+
+    /**
+     * Updates an anchor widget (button + text) with changed props.
+     */
+    private updateAnchorWidget(widget: UE.Widget, changedProps: any): void {
+        // Update the text block within the button
+        if (this.anchorTextBlock) {
+            this.setupTextBlockProperties(this.anchorTextBlock, changedProps);
+            const content = this.extractTextContent(changedProps);
+            if (content !== undefined && content !== '') {
+                this.applyTextContent(this.anchorTextBlock, content);
+            }
+        }
+
+        // Re-bind click handler if href or onClick changed
+        if (this.anchorButton && (changedProps?.href !== undefined || changedProps?.onClick !== undefined)) {
+            this.bindAnchorClickEvent(this.anchorButton, { ...this.props, ...changedProps });
+        }
+    }
+
+    /* ================================================================== */
+    /*  Widget creation entry point                                        */
+    /* ================================================================== */
+
     createNativeWidget() {
+        // Anchor (<a>) elements get a transparent button wrapper for click handling
+        if (isAnchorElement(this.loweredTypeName) && (this.props?.href || this.props?.onClick)) {
+            return this.createAnchorWidget();
+        }
+
+        // Label elements with React element children become WrapBox containers
         if (this.props?.children) {
             if (this.typeName === "label" && isReactElementInChildren(this.props.children)) {
-                // create wrap box
                 const wrapBox = new UE.WrapBox(this.outer);
                 this.setupWrapBoxProperties(wrapBox, this.props);
-
                 return wrapBox;
             }
         }
 
+        // Default: plain TextBlock
         const text = new UE.TextBlock(this.outer);
         this.setupTextBlockProperties(text, this.props);
         const content = this.extractTextContent(this.props);
@@ -357,13 +494,16 @@ export class TextConverter extends JSXConverter {
         UE.UMGManager.SynchronizeWidgetProperties(text);
 
         return text;
-        
     }
 
     update(widget: UE.Widget, _oldProps: any, _changedProps: any) {
+        // Anchor (<a>) elements with button wrapper
+        if (this.anchorButton && widget instanceof UE.Button) {
+            this.updateAnchorWidget(widget, _changedProps);
+            return;
+        }
 
         if (widget instanceof UE.WrapBox) {
-            
             if (this.props?.children || _changedProps?.children) {
                 if ((isReactElementInChildren(this.props.children) 
                     || isReactElementInChildren(_changedProps.children))) 
@@ -371,13 +511,11 @@ export class TextConverter extends JSXConverter {
                     this.setupWrapBoxProperties(widget as UE.WrapBox, _changedProps);
                 }
             }
-
         } else if (widget instanceof UE.TextBlock) {
             const text = widget as UE.TextBlock;
             this.setupTextBlockProperties(text, _changedProps);
             const content = this.extractTextContent(_changedProps);
             this.applyTextContent(text, content);
-            // UE.UMGManager.SynchronizeWidgetProperties(text);
         }
     }
 

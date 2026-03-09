@@ -446,7 +446,8 @@ export class GridConverter extends ContainerConverter {
         const bottom = (rowStart + rowSpan) < this.totalRows ? this.rowGap / 2 : 0;
         const left = colStart > 0 ? this.columnGap / 2 : 0;
         const right = (colStart + colSpan) < this.totalColumns ? this.columnGap / 2 : 0;
-        slot.SetPadding(new UE.Margin(top, right, bottom, left));
+        // UE.Margin constructor order: Left, Top, Right, Bottom
+        slot.SetPadding(new UE.Margin(left, top, right, bottom));
     }
 
     private reapplyGapToAllSlots(grid: UE.GridPanel) {
