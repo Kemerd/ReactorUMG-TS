@@ -653,6 +653,20 @@ export class ContainerConverter extends ElementConverter {
     }
 
     removeChild(parent: UE.Widget, child: UE.Widget): void {
-        child.RemoveFromParent();
+        // Delegate to the proxy so subclass converters (e.g. OverlayConverter)
+        // can clean up internal tracking maps (absoluteChildren, etc.)
+        if (this.proxy) {
+            this.proxy.removeChild(this.originalWidget, child);
+        } else {
+            child.RemoveFromParent();
+        }
+
+        // Clear any deferred slot entry for this child.
+        // Check both the proxy's map (when `this` is the outer CC) and
+        // our own map (when `this` IS the proxy, e.g. FlexConverter).
+        this._deferredSlots.delete(child);
+        if (this.proxy) {
+            (this.proxy as ContainerConverter)._deferredSlots?.delete(child);
+        }
     }
 }
