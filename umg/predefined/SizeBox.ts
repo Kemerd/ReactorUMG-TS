@@ -2,6 +2,7 @@ import * as UE from 'ue';
 import { UMGConverter } from '../umg_converter';
 import { parseAspectRatio } from '../../parsers/css_length_parser';
 import { safeParseFloat } from "../../misc/utils";
+import { queueWidgetSync } from '../../perf/batch_sync';
 
 export class SizeBoxConverter extends UMGConverter {
     constructor(typeName: string, props: any, outer: any) {
@@ -45,7 +46,7 @@ export class SizeBoxConverter extends UMGConverter {
         const sizeBox = new UE.SizeBox(this.outer);
         const propsInit = this.initSizeBoxProps(sizeBox, this.props);
         if (propsInit) {
-            UE.UMGManager.SynchronizeWidgetProperties(sizeBox);
+            queueWidgetSync(sizeBox);
         }
         return sizeBox;
     }
@@ -54,7 +55,7 @@ export class SizeBoxConverter extends UMGConverter {
         const sizeBox = widget as UE.SizeBox;
         const propsInit = this.initSizeBoxProps(sizeBox, changedProps);
         if (propsInit) {
-            UE.UMGManager.SynchronizeWidgetProperties(sizeBox);
+            queueWidgetSync(sizeBox);
         }
     }
 }

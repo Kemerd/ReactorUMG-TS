@@ -512,7 +512,29 @@ export class GridConverter extends ContainerConverter {
 
     appendChild(parent: UE.Widget, child: UE.Widget, childTypeName: string, childProps: any): void {
         const gridPanel = parent as UE.GridPanel;
-        let gridSlot = gridPanel.AddChildToGrid(child);
+        const gridSlot = gridPanel.AddChildToGrid(child);
+
+        // Lazy slot: defer grid position/alignment/padding for collapsed children
+        if (this.isChildCollapsed(child)) {
+            this._deferredSlots.set(child, { typeName: childTypeName, props: childProps });
+            return;
+        }
+
         this.initGridPanelSlot(gridSlot, childTypeName, childProps);
+    }
+
+    /**
+     * Completes deferred grid slot configuration for a child that
+     * was Collapsed at mount time and has now become visible.
+     */
+    completeDeferredSlotSetup(parent: UE.Widget, child: UE.Widget): void {
+        const deferred = this._deferredSlots.get(child);
+        if (!deferred) return;
+        this._deferredSlots.delete(child);
+
+        const slot = (child as any).Slot as UE.GridSlot;
+        if (!slot) return;
+
+        this.initGridPanelSlot(slot, deferred.typeName, deferred.props);
     }
 }   

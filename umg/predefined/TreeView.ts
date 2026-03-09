@@ -2,6 +2,7 @@ import * as UE from 'ue';
 import { UMGConverter } from '../umg_converter';
 import { getAllStyles } from '../../parsers/cssstyle_parser';
 import { convertLengthUnitToSlateUnit } from '../../parsers/css_length_parser';
+import { queueWidgetSync } from '../../perf/batch_sync';
 
 /**
  * TreeView converter: renders a scrollable, expandable/collapsible tree structure.
@@ -143,7 +144,7 @@ export class TreeViewConverter extends UMGConverter {
 
         const propsApplied = this.initProps(scrollBox, this.props);
         if (propsApplied) {
-            UE.UMGManager.SynchronizeWidgetProperties(scrollBox);
+            queueWidgetSync(scrollBox);
         }
         return scrollBox;
     }
@@ -155,7 +156,7 @@ export class TreeViewConverter extends UMGConverter {
         const scrollBox = widget as UE.ScrollBox;
         const propsChanged = this.initProps(scrollBox, changedProps);
         if (propsChanged) {
-            UE.UMGManager.SynchronizeWidgetProperties(scrollBox);
+            queueWidgetSync(scrollBox);
         }
     }
 
@@ -257,7 +258,7 @@ export class TreeViewItemConverter extends UMGConverter {
         // Don't apply expansion state on create -- let React handle visibility
         // through its normal child rendering flow
 
-        UE.UMGManager.SynchronizeWidgetProperties(verticalBox);
+        queueWidgetSync(verticalBox);
         return verticalBox;
     }
 
@@ -268,7 +269,7 @@ export class TreeViewItemConverter extends UMGConverter {
         propsChanged = this.applyDepthIndentation(verticalBox, changedProps) || propsChanged;
 
         if (propsChanged) {
-            UE.UMGManager.SynchronizeWidgetProperties(verticalBox);
+            queueWidgetSync(verticalBox);
         }
     }
 

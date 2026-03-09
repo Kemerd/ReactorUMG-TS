@@ -2,6 +2,7 @@ import * as UE from 'ue';
 import { JSXConverter } from './jsx_converter';
 import { getAllStyles } from '../parsers/cssstyle_parser';
 import { convertLengthUnitToSlateUnit } from '../parsers/css_length_parser';
+import { queueWidgetSync } from '../perf/batch_sync';
 
 /**
  * Video converter: maps <video> JSX elements to UE's MediaPlayer + Image pipeline.
@@ -105,9 +106,9 @@ export class VideoConverter extends JSXConverter {
         }
 
         // Synchronize widget properties
-        UE.UMGManager.SynchronizeWidgetProperties(this.imageWidget);
+        queueWidgetSync(this.imageWidget);
         if (this.sizeBox) {
-            UE.UMGManager.SynchronizeWidgetProperties(this.sizeBox);
+            queueWidgetSync(this.sizeBox);
         }
 
         return this.sizeBox ?? this.imageWidget;
@@ -253,7 +254,7 @@ export class VideoConverter extends JSXConverter {
                     : convertLengthUnitToSlateUnit(String(changedProps.height), styles);
                 if (h) this.sizeBox.SetHeightOverride(h);
             }
-            UE.UMGManager.SynchronizeWidgetProperties(this.sizeBox);
+            queueWidgetSync(this.sizeBox);
         }
     }
 

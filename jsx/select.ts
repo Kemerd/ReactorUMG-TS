@@ -5,6 +5,7 @@ import { parseBackgroundProps } from '../parsers/css_background_parser';
 import { hasFontStyles, setupFontStyles } from '../parsers/css_font_parser';
 import { parseToLinearColor } from '../parsers/css_color_parser';
 import { compareTwoFunctions } from '../misc/utils';
+import { queueWidgetSync } from '../perf/batch_sync';
 
 type OptionItem = { value: string; label: string };
 
@@ -154,7 +155,7 @@ export class SelectConverter extends JSXConverter {
         this.setSelection(combo, this.props);
         this.ensureOnChange(combo, this.props, false);
 
-        UE.UMGManager.SynchronizeWidgetProperties(combo);
+        queueWidgetSync(combo);
         return combo;
     }
 
@@ -175,7 +176,7 @@ export class SelectConverter extends JSXConverter {
         this.setSelection(combo, changedProps);
         this.ensureOnChange(combo, changedProps, true);
 
-        UE.UMGManager.SynchronizeWidgetProperties(combo);
+        queueWidgetSync(combo);
     }
 
     appendChild(parent: UE.Widget, _child: UE.Widget, childTypeName: string, childProps: any): void {

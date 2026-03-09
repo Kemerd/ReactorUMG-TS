@@ -1,5 +1,6 @@
 import * as UE from 'ue';
 import { UMGConverter } from '../umg_converter';
+import { queueWidgetSync } from '../../perf/batch_sync';
 
 export class RetainerBoxConverter extends UMGConverter {
     constructor(typeName: string, props: any, outer: any) {
@@ -45,7 +46,7 @@ export class RetainerBoxConverter extends UMGConverter {
         const retainerBox = new UE.RetainerBox(this.outer);
         const propsInit = this.initRetainerBoxProps(retainerBox, this.props);
         if (propsInit) {
-            UE.UMGManager.SynchronizeWidgetProperties(retainerBox);
+            queueWidgetSync(retainerBox);
         }
         
         return retainerBox;
@@ -55,7 +56,7 @@ export class RetainerBoxConverter extends UMGConverter {
         const retainerBox = widget as UE.RetainerBox;
         const propsChanged = this.initRetainerBoxProps(retainerBox, changedProps);
         if (propsChanged) {
-            UE.UMGManager.SynchronizeWidgetProperties(retainerBox);
+            queueWidgetSync(retainerBox);
         }
     }
 }

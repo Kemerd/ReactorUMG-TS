@@ -1,6 +1,7 @@
 import { parseToLinearColor } from '../../parsers/css_color_parser';
 import { UMGConverter } from '../umg_converter';
 import * as UE from 'ue';
+import { queueWidgetSync } from '../../perf/batch_sync';
 
 export class SpineConverter extends UMGConverter {
     constructor(typeName: string, props: any, outer: any) {
@@ -74,7 +75,7 @@ export class SpineConverter extends UMGConverter {
         const spine = new UE.SpineWidget(this.outer);
         const propsInit = this.initSpineProps(spine, this.props);
         if (propsInit) {
-            UE.UMGManager.SynchronizeWidgetProperties(spine);
+            queueWidgetSync(spine);
         }
         return spine;
     }
@@ -83,7 +84,7 @@ export class SpineConverter extends UMGConverter {
         const spine = widget as UE.SpineWidget;
         const propsInit = this.initSpineProps(spine, changedProps);
         if (propsInit) {
-            UE.UMGManager.SynchronizeWidgetProperties(spine);
+            queueWidgetSync(spine);
         }
     }
     

@@ -4,6 +4,7 @@ import { parseBrush } from '../../parsers/brush_parser';
 import { convertPadding } from '../../parsers/css_margin_parser';
 import { parseToLinearColor } from '../../parsers/css_color_parser';
 import { getAllStyles } from '../../parsers/cssstyle_parser';
+import { queueWidgetSync } from '../../perf/batch_sync';
 
 export class CheckBoxConverter extends UMGConverter {
     constructor(typeName: string, props: any, outer: any) {
@@ -97,7 +98,7 @@ export class CheckBoxConverter extends UMGConverter {
         const checkBox = new UE.CheckBox(this.outer);
         const propsInit = this.setupProps(checkBox, this.props);
         if (propsInit) {
-            UE.UMGManager.SynchronizeWidgetProperties(checkBox);
+            queueWidgetSync(checkBox);
         }
         return checkBox;
     }
@@ -106,7 +107,7 @@ export class CheckBoxConverter extends UMGConverter {
         const checkBox = widget as UE.CheckBox;
         const propsChanged = this.setupProps(checkBox, changedProps);
         if (propsChanged) {
-            UE.UMGManager.SynchronizeWidgetProperties(checkBox);
+            queueWidgetSync(checkBox);
         }
     }
 }

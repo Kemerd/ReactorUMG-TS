@@ -5,6 +5,7 @@ import { JSXConverter } from "./jsx_converter";
 import { parseBackgroundProps } from "../parsers/css_background_parser";
 import { parseBrush } from "../parsers/brush_parser";
 import { convertToUEMargin } from "../parsers/css_margin_parser";
+import { queueWidgetSync } from "../perf/batch_sync";
 
 export class ButtonConverter extends JSXConverter {
 
@@ -389,7 +390,7 @@ export class ButtonConverter extends JSXConverter {
         this.initButtonDefaultProps(button);
         this.setButtonStyle(button, props);
         this.setButtonEventHandlers(button, props ?? this.props);
-        UE.UMGManager.SynchronizeWidgetProperties(button);
+        queueWidgetSync(button);
     }
 
     createNativeWidget() {
@@ -402,6 +403,6 @@ export class ButtonConverter extends JSXConverter {
         const button = widget as UE.Button;
         this.setButtonStyle(button, changedProps);
         this.setButtonEventHandlers(button, changedProps);
-        UE.UMGManager.SynchronizeWidgetProperties(button);
+        queueWidgetSync(button);
     }
 }

@@ -1,5 +1,6 @@
 import * as UE from 'ue';
 import { UMGConverter } from '../umg_converter';
+import { queueWidgetSync } from '../../perf/batch_sync';
 
 export class SpacerConverter extends UMGConverter {
     constructor(typeName: string, props: any, outer: any) {
@@ -12,7 +13,7 @@ export class SpacerConverter extends UMGConverter {
         if (size) {
             spacer.Size.X = size.x;
             spacer.Size.Y = size.y;
-            UE.UMGManager.SynchronizeWidgetProperties(spacer);
+            queueWidgetSync(spacer);
         }
 
         return spacer;
@@ -24,7 +25,7 @@ export class SpacerConverter extends UMGConverter {
         if (size) {
             spacer.Size.X = size.x;
             spacer.Size.Y = size.y;
-            UE.UMGManager.SynchronizeWidgetProperties(spacer);
+            queueWidgetSync(spacer);
         }
     }
     

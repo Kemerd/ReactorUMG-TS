@@ -76,7 +76,28 @@ export class UniformGridConverter extends ContainerConverter {
     appendChild(parent: UE.Widget, child: UE.Widget, childTypeName: string, childProps: any): void {
         const uniformGrid = parent as UE.UniformGridPanel;
         const slot = uniformGrid.AddChildToUniformGrid(child);
+
+        // Lazy slot: defer alignment and row/column setup for collapsed children
+        if (this.isChildCollapsed(child)) {
+            this._deferredSlots.set(child, { typeName: childTypeName, props: childProps });
+            return;
+        }
+
         this.setupUniformGridSlot(slot, childTypeName, childProps);
     }
-    
+
+    /**
+     * Completes deferred uniform grid slot configuration for a child
+     * that was Collapsed at mount time and has now become visible.
+     */
+    completeDeferredSlotSetup(parent: UE.Widget, child: UE.Widget): void {
+        const deferred = this._deferredSlots.get(child);
+        if (!deferred) return;
+        this._deferredSlots.delete(child);
+
+        const slot = (child as any).Slot as UE.UniformGridSlot;
+        if (!slot) return;
+
+        this.setupUniformGridSlot(slot, deferred.typeName, deferred.props);
+    }
 }

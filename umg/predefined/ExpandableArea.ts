@@ -4,6 +4,7 @@ import { getAllStyles } from '../../parsers/cssstyle_parser';
 import { convertToUEMargin } from '../../parsers/css_margin_parser';
 import { parseBrush } from '../../parsers/brush_parser';
 import { parseToLinearColor } from '../../parsers/css_color_parser';
+import { queueWidgetSync } from '../../perf/batch_sync';
 
 export class ExpandableAreaConverter extends UMGConverter {
     private headerWidget?: UE.Widget | null;
@@ -145,7 +146,7 @@ export class ExpandableAreaConverter extends UMGConverter {
         const propsUpdated = this.applyProps(area, this.props);
         const contentUpdated = this.applyContent(area, this.props, true);
         if (propsUpdated || contentUpdated) {
-            UE.UMGManager.SynchronizeWidgetProperties(area);
+            queueWidgetSync(area);
         }
         return area;
     }
@@ -155,7 +156,7 @@ export class ExpandableAreaConverter extends UMGConverter {
         const propsUpdated = this.applyProps(area, changedProps);
         const contentUpdated = this.applyContent(area, changedProps, false);
         if (propsUpdated || contentUpdated) {
-            UE.UMGManager.SynchronizeWidgetProperties(area);
+            queueWidgetSync(area);
         }
     }
 

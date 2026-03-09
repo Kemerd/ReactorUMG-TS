@@ -1,6 +1,7 @@
 import * as UE from 'ue';
 import { UMGConverter } from '../umg_converter';
 import { parseBrush } from '../../parsers/brush_parser';
+import { queueWidgetSync } from '../../perf/batch_sync';
 
 export class CircularThrobberConverter extends UMGConverter {
     constructor(typeName: string, props: any, outer: any) {
@@ -34,7 +35,7 @@ export class CircularThrobberConverter extends UMGConverter {
 
         const propsInit = this.setupProps(circularThrobber, this.props);
         if (propsInit) {
-            UE.UMGManager.SynchronizeWidgetProperties(circularThrobber);
+            queueWidgetSync(circularThrobber);
         }
         
         return circularThrobber;
@@ -44,7 +45,7 @@ export class CircularThrobberConverter extends UMGConverter {
         const circularThrobber = widget as UE.CircularThrobber;
         const propsChanged = this.setupProps(circularThrobber, changedProps);
         if (propsChanged) {
-            UE.UMGManager.SynchronizeWidgetProperties(circularThrobber);
+            queueWidgetSync(circularThrobber);
         }
     }
 }

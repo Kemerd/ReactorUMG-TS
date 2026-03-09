@@ -5,6 +5,7 @@ import { convertGap, convertPadding } from '../parsers/css_margin_parser';
 import { getAllStyles } from '../parsers/cssstyle_parser';
 import { JSXConverter } from './jsx_converter';
 import { isReactElementInChildren } from '../misc/utils';
+import { queueWidgetSync } from '../perf/batch_sync';
 import * as UE from 'ue';
 
 /**
@@ -403,8 +404,8 @@ export class TextConverter extends JSXConverter {
         // Bind click event: open href URL or fire onClick
         this.bindAnchorClickEvent(button, this.props);
 
-        UE.UMGManager.SynchronizeWidgetProperties(text);
-        UE.UMGManager.SynchronizeWidgetProperties(button);
+        queueWidgetSync(text);
+        queueWidgetSync(button);
 
         return button;
     }
@@ -491,7 +492,7 @@ export class TextConverter extends JSXConverter {
         this.setupTextBlockProperties(text, this.props);
         const content = this.extractTextContent(this.props);
         this.applyTextContent(text, content);
-        UE.UMGManager.SynchronizeWidgetProperties(text);
+        queueWidgetSync(text);
 
         return text;
     }

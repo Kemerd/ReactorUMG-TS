@@ -29,6 +29,7 @@ import * as puerts from 'puerts';
 import { parseToLinearColor } from './css_color_parser';
 import { convertLengthUnitToSlateUnit } from './css_length_parser';
 import type { KeyframeDefinition, KeyframeStep } from './inline_style_registry';
+import { immediateWidgetSync } from '../perf/batch_sync';
 
 /* ─────────────────────────────────────────────────────────
  * Easing Functions
@@ -825,7 +826,7 @@ function applyTransitionValue(widget: UE.Widget, propertyName: string, value: an
         const props = {};
         props[propertyName] = value;
         puerts.merge(widget, props);
-        UE.UMGManager.SynchronizeWidgetProperties(widget);
+        immediateWidgetSync(widget);
     } catch (e) {
         // Silently handle property application failures
     }
@@ -881,7 +882,7 @@ function applyKeyframeAtProgress(anim: ActiveAnimation, progress: number): void 
     if (Object.keys(interpolated).length > 0) {
         try {
             puerts.merge(anim.widget, interpolated);
-            UE.UMGManager.SynchronizeWidgetProperties(anim.widget);
+            immediateWidgetSync(anim.widget);
         } catch (_e) {
             // Silent failure for property application
         }

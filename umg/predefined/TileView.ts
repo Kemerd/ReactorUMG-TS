@@ -3,6 +3,7 @@ import { UMGConverter } from '../umg_converter';
 import { getAllStyles } from '../../parsers/cssstyle_parser';
 import { convertLengthUnitToSlateUnit } from '../../parsers/css_length_parser';
 import { parseWidgetSelfAlignment } from '../../parsers/alignment_parser';
+import { queueWidgetSync } from '../../perf/batch_sync';
 
 /**
  * TileView converter: renders children as a grid of equally-sized tiles.
@@ -189,14 +190,14 @@ export class TileViewConverter extends UMGConverter {
             }
 
             if (propsApplied) {
-                UE.UMGManager.SynchronizeWidgetProperties(this.wrapBox);
+                queueWidgetSync(this.wrapBox);
             }
-            UE.UMGManager.SynchronizeWidgetProperties(this.scrollBoxWrapper);
+            queueWidgetSync(this.scrollBoxWrapper);
             return this.scrollBoxWrapper;
         }
 
         if (propsApplied) {
-            UE.UMGManager.SynchronizeWidgetProperties(this.wrapBox);
+            queueWidgetSync(this.wrapBox);
         }
         return this.wrapBox;
     }
@@ -209,7 +210,7 @@ export class TileViewConverter extends UMGConverter {
         const targetWrapBox = this.wrapBox ?? widget as UE.WrapBox;
         const propsChanged = this.initProps(targetWrapBox, changedProps);
         if (propsChanged) {
-            UE.UMGManager.SynchronizeWidgetProperties(targetWrapBox);
+            queueWidgetSync(targetWrapBox);
         }
     }
 

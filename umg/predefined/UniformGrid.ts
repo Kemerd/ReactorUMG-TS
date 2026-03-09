@@ -3,6 +3,7 @@ import { UMGConverter } from '../umg_converter';
 import { convertToUEMargin } from '../../parsers/css_margin_parser';
 import { getAllStyles } from '../../parsers/cssstyle_parser';
 import { parseWidgetSelfAlignment } from '../../parsers/alignment_parser';
+import { queueWidgetSync } from '../../perf/batch_sync';
 
 export class UniformGridConverter extends UMGConverter {
     constructor(typeName: string, props: any, outer: any) {
@@ -50,7 +51,7 @@ export class UniformGridConverter extends UMGConverter {
         const grid = new UE.UniformGridPanel(this.outer);
         const propsInit = this.initProps(grid, this.props);
         if (propsInit) {
-            UE.UMGManager.SynchronizeWidgetProperties(grid);
+            queueWidgetSync(grid);
         }
         return grid;
     }
@@ -59,7 +60,7 @@ export class UniformGridConverter extends UMGConverter {
         const grid = widget as UE.UniformGridPanel;
         const propsInit = this.initProps(grid, changedProps);
         if (propsInit) {
-            UE.UMGManager.SynchronizeWidgetProperties(grid);
+            queueWidgetSync(grid);
         }
     }
 

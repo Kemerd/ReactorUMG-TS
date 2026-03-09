@@ -216,12 +216,39 @@ export class CanvasConverter extends ContainerConverter {
         this.containerHeightRef = (h && h !== 'auto') ? convertLengthUnitToSlateUnit(h, style) : 0;
     }
     appendChild(parent: UE.Widget, child: UE.Widget, childTypeName: string, childProps: any): void {
-        let canvasPanel = parent as UE.CanvasPanel;
+        const canvasPanel = parent as UE.CanvasPanel;
         const childCanvasSlot = canvasPanel.AddChildToCanvas(child);
         this.childCanvasSlot.set(child, childCanvasSlot);
+
+        // Lazy slot: defer expensive anchor/position/size computation
+        // when the child is Collapsed at mount time
+        if (this.isChildCollapsed(child)) {
+            this._deferredSlots.set(child, { typeName: childTypeName, props: childProps });
+            return;
+        }
 
         const childStyle = getAllStyles(childTypeName, childProps);
         this.initCanvasSlot(childCanvasSlot, childStyle);
         this.childInfo.set(child, { typeName: childTypeName, props: childProps });
+    }
+
+    /**
+     * Completes deferred canvas slot configuration for a child that was
+     * Collapsed at mount time.  Uses the existing CanvasPanelSlot to
+     * apply anchoring, positioning, and sizing.
+     */
+    completeDeferredSlotSetup(parent: UE.Widget, child: UE.Widget): void {
+        const deferred = this._deferredSlots.get(child);
+        if (!deferred) return;
+        this._deferredSlots.delete(child);
+
+        // Store child info for future update cycles
+        this.childInfo.set(child, { typeName: deferred.typeName, props: deferred.props });
+
+        const canvasSlot = this.childCanvasSlot.get(child);
+        if (!canvasSlot) return;
+
+        const childStyle = getAllStyles(deferred.typeName, deferred.props);
+        this.initCanvasSlot(canvasSlot, childStyle);
     }
 }

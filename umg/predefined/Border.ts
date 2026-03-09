@@ -4,6 +4,7 @@ import { getAllStyles } from '../../parsers/cssstyle_parser';
 import { parseBrush } from '../../parsers/brush_parser';
 import { parseToLinearColor } from '../../parsers/css_color_parser';
 import { convertToUEMargin } from '../../parsers/css_margin_parser';
+import { queueWidgetSync } from '../../perf/batch_sync';
 
 export class BorderConverter extends UMGConverter {
     constructor(typeName: string, props: any, outer: any) {
@@ -133,7 +134,7 @@ export class BorderConverter extends UMGConverter {
         this.setupProps(border, this.props);
         const bindEvent = this.bindEvent(border, this.props);
         if (bindEvent) {
-            UE.UMGManager.SynchronizeWidgetProperties(border);
+            queueWidgetSync(border);
         }
         return border;
     }
@@ -143,7 +144,7 @@ export class BorderConverter extends UMGConverter {
         this.setupProps(border, changedProps);
         const bindEvent = this.bindEvent(border, changedProps);
         if (bindEvent) {
-            UE.UMGManager.SynchronizeWidgetProperties(border);
+            queueWidgetSync(border);
         }
     }
 }

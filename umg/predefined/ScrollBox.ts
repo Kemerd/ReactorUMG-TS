@@ -2,6 +2,7 @@ import * as UE from 'ue';
 import { UMGConverter } from '../umg_converter';
 import { convertToUEMargin } from '../../parsers/css_margin_parser';
 import { parseBrush } from '../../parsers/brush_parser';
+import { queueWidgetSync } from '../../perf/batch_sync';
 
 export class ScrollBoxConverter extends UMGConverter {
     constructor(typeName: string, props: any, outer: any) {
@@ -143,7 +144,7 @@ export class ScrollBoxConverter extends UMGConverter {
         const scrollBox = new UE.ScrollBox(this.outer);
         const propsInit = this.initProps(scrollBox, this.props);
         if (propsInit) {
-            UE.UMGManager.SynchronizeWidgetProperties(scrollBox);
+            queueWidgetSync(scrollBox);
         }
         return scrollBox;
     }
@@ -152,7 +153,7 @@ export class ScrollBoxConverter extends UMGConverter {
         const scrollBox = widget as UE.ScrollBox;
         const propsInit = this.initProps(scrollBox, changedProps);
         if (propsInit) {
-            UE.UMGManager.SynchronizeWidgetProperties(scrollBox);
+            queueWidgetSync(scrollBox);
         }
     }
 }

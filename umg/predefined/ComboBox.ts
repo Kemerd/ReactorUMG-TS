@@ -3,6 +3,7 @@ import { UMGConverter } from '../umg_converter';
 import { convertMargin, convertToUEMargin } from '../../parsers/css_margin_parser';
 import { parseBrush } from '../../parsers/brush_parser';
 import { parseToLinearColor } from '../../parsers/css_color_parser';
+import { queueWidgetSync } from '../../perf/batch_sync';
 
 export class ComboBoxConverter extends UMGConverter {
     constructor(typeName: string, props: any, outer: any) {
@@ -177,7 +178,7 @@ export class ComboBoxConverter extends UMGConverter {
         const comboBox = new UE.ComboBoxString(this.outer);
         const propsInit = this.setupProps(comboBox, this.props);
         if (propsInit) {
-            UE.UMGManager.SynchronizeWidgetProperties(comboBox);
+            queueWidgetSync(comboBox);
         }
         return comboBox;
     }
@@ -186,7 +187,7 @@ export class ComboBoxConverter extends UMGConverter {
         const comboBox = widget as UE.ComboBoxString;
         const propsChanged = this.setupProps(comboBox, changedProps);
         if (propsChanged) {
-            UE.UMGManager.SynchronizeWidgetProperties(comboBox);
+            queueWidgetSync(comboBox);
         }
     }
 }

@@ -2,6 +2,7 @@ import { UMGConverter } from "./umg_converter";
 import * as UE from 'ue';
 import * as puerts from 'puerts';
 import { ALL_EVENT_PROPS_WITH_CAPTURE } from '../events';
+import { queueWidgetSync } from '../perf/batch_sync';
 
 export class NativeWidgetConverter extends UMGConverter {
     private callbackRecords: {[key: string] : () => void};
@@ -92,7 +93,7 @@ export class NativeWidgetConverter extends UMGConverter {
 
         if (propsChanged) {
             puerts.merge(widget, propsChanged);
-            UE.UMGManager.SynchronizeWidgetProperties(widget);
+            queueWidgetSync(widget);
         }
     }
 

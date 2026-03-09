@@ -3,6 +3,7 @@ import { UMGConverter } from '../umg_converter';
 import { parseToLinearColor } from '../../parsers/css_color_parser';
 import { parseBrush } from '../../parsers/brush_parser';
 import { convertToUEMargin } from '../../parsers/css_margin_parser';
+import { queueWidgetSync } from '../../perf/batch_sync';
 
 export class SpinBoxConverter extends UMGConverter {
     constructor(typeName: string, props: any, outer: any) {
@@ -124,7 +125,7 @@ export class SpinBoxConverter extends UMGConverter {
         const spinBox = new UE.SpinBox(this.outer);
         const propsInit = this.initSpinBoxProps(spinBox, this.props);
         if (propsInit) {
-            UE.UMGManager.SynchronizeWidgetProperties(spinBox);
+            queueWidgetSync(spinBox);
         }
         return spinBox;
     }
@@ -133,7 +134,7 @@ export class SpinBoxConverter extends UMGConverter {
         const spinBox = widget as UE.SpinBox;
         const propsInit = this.initSpinBoxProps(spinBox, changedProps);
         if (propsInit) {
-            UE.UMGManager.SynchronizeWidgetProperties(spinBox);
+            queueWidgetSync(spinBox);
         }
     }
 }

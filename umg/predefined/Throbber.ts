@@ -1,6 +1,7 @@
 import * as UE from 'ue';
 import { UMGConverter } from '../umg_converter';
 import { parseBrush } from '../../parsers/brush_parser';
+import { queueWidgetSync } from '../../perf/batch_sync';
 
 export class ThrobberConverter extends UMGConverter {
     constructor(typeName: string, props: any, outer: any) {
@@ -33,7 +34,7 @@ export class ThrobberConverter extends UMGConverter {
         const throbber = new UE.Throbber(this.outer);
         const propsInit = this.initProps(throbber, this.props);
         if (propsInit) {
-            UE.UMGManager.SynchronizeWidgetProperties(throbber);
+            queueWidgetSync(throbber);
         }
         return throbber;
     }
@@ -42,7 +43,7 @@ export class ThrobberConverter extends UMGConverter {
         const throbber = widget as UE.Throbber;
         const propsChanged = this.initProps(throbber, changedProps);
         if (propsChanged) {
-            UE.UMGManager.SynchronizeWidgetProperties(throbber);
+            queueWidgetSync(throbber);
         }
     }
 }

@@ -9,9 +9,13 @@ import { safeParseFloat } from "../misc/utils";
 import { parseWidgetSelfAlignment } from "../parsers/alignment_parser";
 import { hasFontStyles, setupFontStyles } from "../parsers/css_font_parser";
 import { processBorderStyles, applyOutlineToBrush, parseBoxShadow } from "../parsers/css_border_parser";
+import { queueWidgetSync } from "../perf/batch_sync";
 
 /**
- * 将容器参数以及布局参数转换中通用的功能实现在这个类中
+ * Base class for all container (panel) converters. Implements shared
+ * functionality for layout parameter conversion, background/size/scale
+ * wrapping, and the lazy-slot optimisation that defers expensive slot
+ * configuration for children whose initial visibility is Collapsed.
  */
 export class ContainerConverter extends ElementConverter {
     containerType: string;
@@ -22,6 +26,13 @@ export class ContainerConverter extends ElementConverter {
     sizeBoxWidget: UE.Widget; // 保存sizebox容器
     scaleBoxWidget: UE.Widget; // 保存scalebox容器
     borderWidget: UE.Widget; // 保存border容器
+
+    /**
+     * Children whose slot configuration was deferred because they were
+     * Collapsed at mount time.  Keyed by the native child widget so we
+     * can match them later when visibility changes.
+     */
+    protected _deferredSlots: Map<UE.Widget, { typeName: string; props: any }> = new Map();
 
     private childConverters: Record<string, string>;
 
@@ -362,7 +373,7 @@ export class ContainerConverter extends ElementConverter {
             this.scrollBoxWrapper = scrollBox;
         }
 
-        UE.UMGManager.SynchronizeWidgetProperties(scrollBox);
+        queueWidgetSync(scrollBox);
         return scrollBox;
     }
 
@@ -444,6 +455,40 @@ export class ContainerConverter extends ElementConverter {
         return -1; // append at end (this child has the highest z-index)
     }
 
+    /**
+     * Returns true when the child widget's current visibility is Collapsed.
+     * Used by subclass converters to decide whether expensive slot setup
+     * should be deferred until the child becomes visible.
+     */
+    protected isChildCollapsed(child: UE.Widget): boolean {
+        if (!child) return false;
+        try {
+            return child.Visibility === UE.ESlateVisibility.Collapsed;
+        } catch {
+            return false;
+        }
+    }
+
+    /**
+     * Completes deferred slot configuration for a child widget that has
+     * transitioned from Collapsed to a visible state.  The base implementation
+     * delegates to the proxy converter (Flex, Overlay, Canvas, etc.).
+     * Subclasses override this to perform the actual slot init using the
+     * slot that already exists on the child from the initial AddChild call.
+     *
+     * @param parent   The native parent panel widget
+     * @param child    The native child widget whose slot needs configuring
+     */
+    completeDeferredSlotSetup(parent: UE.Widget, child: UE.Widget): void {
+        // Delegate to the proxy converter that holds the actual deferred data
+        if (this.proxy && typeof (this.proxy as any).completeDeferredSlotSetup === 'function') {
+            (this.proxy as any).completeDeferredSlotSetup(this.originalWidget, child);
+        }
+
+        // Complete any text styling that was skipped for collapsed children
+        this._applyTextInstanceStyles(child);
+    }
+
     initChildPadding(panelSlot: UE.PanelSlot, childStyle: any): void {
         if (!panelSlot || typeof (panelSlot as any).SetPadding !== 'function') {
             return;
@@ -517,78 +562,94 @@ export class ContainerConverter extends ElementConverter {
             this.proxy.appendChild(this.originalWidget, child, childTypeName, childProps);
         }
 
+        // Skip expensive text styling for collapsed children.
+        // The styling will be applied when completeDeferredSlotSetup runs
+        // after the child transitions to a visible state.
+        if (this.isChildCollapsed(child)) {
+            return;
+        }
+
         if (childProps["_children_text_instance"]) {
-            // Mirror TextConverter.setupTextBlockProperties for inline text instances
-            if (child instanceof UE.TextBlock) {
-                const styles = this.containerStyle ?? {};
+            this._applyTextInstanceStyles(child);
+        }
+    }
 
-                // Font family/size/weight/outline/spacing
-                if (hasFontStyles(styles)) {
-                    if (!child.Font) {
-                        const fontStyles = new UE.SlateFontInfo();
-                        setupFontStyles(child, fontStyles, styles);
-                        child.SetFont(fontStyles);
-                    } else {
-                        setupFontStyles(child, child.Font, styles);
-                    }
-                }
+    /**
+     * Applies container-inherited text styles (font, color, alignment, etc.)
+     * to an inline text instance child.  Mirrors the logic from
+     * TextConverter.setupTextBlockProperties so children inherit the
+     * parent container's typographic settings.
+     */
+    private _applyTextInstanceStyles(child: UE.Widget): void {
+        if (!(child instanceof UE.TextBlock)) return;
 
-                // Color
-                const fontColor = (styles as any)?.color ?? (styles as any)?.fontColor;
-                if (fontColor) {
-                    const rgba = parseToLinearColor(fontColor);
-                    const specifiedColor = child.ColorAndOpacity?.SpecifiedColor;
-                    if (specifiedColor) {
-                        specifiedColor.R = rgba.r;
-                        specifiedColor.G = rgba.g;
-                        specifiedColor.B = rgba.b;
-                        specifiedColor.A = rgba.a;
-                    }
-                }
+        const styles = this.containerStyle ?? {};
 
-                // Text alignment
-                const textAlign = (styles as any)?.textAlign;
-                if (textAlign) {
-                    const v = String(textAlign).toLowerCase();
-                    if (v === 'center') {
-                        child.Justification = UE.ETextJustify.Center;
-                    } else if (v === 'right') {
-                        child.Justification = UE.ETextJustify.Right;
-                    } else {
-                        child.Justification = UE.ETextJustify.Left;
-                    }
-                }
-
-                // Text transform
-                const textTransform = (styles as any)?.textTransform;
-                if (textTransform) {
-                    const v = String(textTransform).toLowerCase();
-                    if (v === 'uppercase') {
-                        child.TextTransformPolicy = UE.ETextTransformPolicy.ToUpper;
-                    } else if (v === 'lowercase') {
-                        child.TextTransformPolicy = UE.ETextTransformPolicy.ToLower;
-                    } else {
-                        child.TextTransformPolicy = UE.ETextTransformPolicy.None;
-                    }
-                }
-
-                // Line height
-                const lineHeight: any = (styles as any)?.lineHeight;
-                if (lineHeight !== undefined && lineHeight !== null) {
-                    let resolved: number | null = null;
-                    if (typeof lineHeight === 'number') {
-                        resolved = lineHeight;
-                    } else if (typeof lineHeight === 'string' && lineHeight.trim().length > 0) {
-                        resolved = convertLengthUnitToSlateUnit(lineHeight, styles) as any;
-                    }
-                    if (resolved !== null && resolved !== undefined) {
-                        child.LineHeightPercentage = resolved as number;
-                    }
-                }
-
-                UE.UMGManager.SynchronizeWidgetProperties(child);
+        // Font family/size/weight/outline/spacing
+        if (hasFontStyles(styles)) {
+            if (!child.Font) {
+                const fontStyles = new UE.SlateFontInfo();
+                setupFontStyles(child, fontStyles, styles);
+                child.SetFont(fontStyles);
+            } else {
+                setupFontStyles(child, child.Font, styles);
             }
         }
+
+        // Color
+        const fontColor = (styles as any)?.color ?? (styles as any)?.fontColor;
+        if (fontColor) {
+            const rgba = parseToLinearColor(fontColor);
+            const specifiedColor = child.ColorAndOpacity?.SpecifiedColor;
+            if (specifiedColor) {
+                specifiedColor.R = rgba.r;
+                specifiedColor.G = rgba.g;
+                specifiedColor.B = rgba.b;
+                specifiedColor.A = rgba.a;
+            }
+        }
+
+        // Text alignment
+        const textAlign = (styles as any)?.textAlign;
+        if (textAlign) {
+            const v = String(textAlign).toLowerCase();
+            if (v === 'center') {
+                child.Justification = UE.ETextJustify.Center;
+            } else if (v === 'right') {
+                child.Justification = UE.ETextJustify.Right;
+            } else {
+                child.Justification = UE.ETextJustify.Left;
+            }
+        }
+
+        // Text transform
+        const textTransform = (styles as any)?.textTransform;
+        if (textTransform) {
+            const v = String(textTransform).toLowerCase();
+            if (v === 'uppercase') {
+                child.TextTransformPolicy = UE.ETextTransformPolicy.ToUpper;
+            } else if (v === 'lowercase') {
+                child.TextTransformPolicy = UE.ETextTransformPolicy.ToLower;
+            } else {
+                child.TextTransformPolicy = UE.ETextTransformPolicy.None;
+            }
+        }
+
+        // Line height
+        const lineHeight: any = (styles as any)?.lineHeight;
+        if (lineHeight !== undefined && lineHeight !== null) {
+            let resolved: number | null = null;
+            if (typeof lineHeight === 'number') {
+                resolved = lineHeight;
+            } else if (typeof lineHeight === 'string' && lineHeight.trim().length > 0) {
+                resolved = convertLengthUnitToSlateUnit(lineHeight, styles) as any;
+            }
+            if (resolved !== null && resolved !== undefined) {
+                child.LineHeightPercentage = resolved as number;
+            }
+        }
+
+        queueWidgetSync(child);
     }
 
     removeChild(parent: UE.Widget, child: UE.Widget): void {

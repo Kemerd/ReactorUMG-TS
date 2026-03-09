@@ -2,6 +2,7 @@ import * as UE from 'ue';
 import { UMGConverter } from '../umg_converter';
 import { parseBrush } from '../../parsers/brush_parser';
 import { parseToLinearColor } from '../../parsers/css_color_parser';
+import { queueWidgetSync } from '../../perf/batch_sync';
 
 export class ProgressBarConverter extends UMGConverter {
     constructor(typeName: string, props: any, outer: any) {
@@ -91,7 +92,7 @@ export class ProgressBarConverter extends UMGConverter {
         const progressBar = new UE.ProgressBar(this.outer);
         const propsInit = this.initProps(progressBar, this.props);
         if (propsInit) {
-            UE.UMGManager.SynchronizeWidgetProperties(progressBar);
+            queueWidgetSync(progressBar);
         }
         return progressBar;
     }
@@ -100,7 +101,7 @@ export class ProgressBarConverter extends UMGConverter {
         const progressBar = widget as UE.ProgressBar;
         const propsChanged = this.initProps(progressBar, changedProps);
         if (propsChanged) {
-            UE.UMGManager.SynchronizeWidgetProperties(progressBar);
+            queueWidgetSync(progressBar);
         }
     }
 }

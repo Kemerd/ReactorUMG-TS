@@ -3,6 +3,7 @@ import { JSXConverter } from './jsx_converter';
 import { getAllStyles } from '../parsers/cssstyle_parser';
 import { hasFontStyles, setupFontStyles } from '../parsers/css_font_parser';
 import { parseToLinearColor } from '../parsers/css_color_parser';
+import { queueWidgetSync } from '../perf/batch_sync';
 
 export class TextAreaConverter extends JSXConverter {
     constructor(typeName: string, props: any, outer: any) {
@@ -137,7 +138,7 @@ export class TextAreaConverter extends JSXConverter {
         const textArea = new UE.MultiLineEditableText(this.outer);
         this.initTextAreaProps(textArea, this.props);
         this.applyStyles(textArea, this.props);
-        UE.UMGManager.SynchronizeWidgetProperties(textArea);
+        queueWidgetSync(textArea);
         return textArea;
     }
 
@@ -147,7 +148,7 @@ export class TextAreaConverter extends JSXConverter {
         const styleChanged = !!changedProps && (('style' in changedProps) || ('className' in changedProps) || ('id' in changedProps));
         if (propsChanged || styleChanged) {
             this.applyStyles(textArea, changedProps);
-            UE.UMGManager.SynchronizeWidgetProperties(textArea);
+            queueWidgetSync(textArea);
         }
     }
 }

@@ -1,5 +1,6 @@
 import { UMGConverter } from '../umg_converter';
 import * as UE from 'ue';
+import { queueWidgetSync } from '../../perf/batch_sync';
 
 export class SafeZoneConverter extends UMGConverter {
     constructor(typeName: string, props: any, outer: any) {
@@ -40,7 +41,7 @@ export class SafeZoneConverter extends UMGConverter {
         const safeZone = new UE.SafeZone(this.outer);
         const propsInit = this.initSafeZoneProps(safeZone, this.props);
         if (propsInit) {
-            UE.UMGManager.SynchronizeWidgetProperties(safeZone);
+            queueWidgetSync(safeZone);
         }
         return safeZone;
     }
@@ -49,7 +50,7 @@ export class SafeZoneConverter extends UMGConverter {
         const safeZone = widget as UE.SafeZone;
         const propsChanged = this.initSafeZoneProps(safeZone, changedProps);
         if (propsChanged) {
-            UE.UMGManager.SynchronizeWidgetProperties(safeZone);
+            queueWidgetSync(safeZone);
         }
     }
 }

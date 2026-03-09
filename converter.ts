@@ -3,6 +3,7 @@ import { findChangedProps, isEmpty, isKeyOfRecord, safeParseFloat } from './misc
 import { getAllStyles } from './parsers/cssstyle_parser';
 import { parseCursor, parseTransform, parseTransformPivot, parseTranslate, parseVisibility } from './parsers/common_props_parser';
 import { processStyleTransitions, cancelWidgetTransitions } from './parsers/css_transition_engine';
+import { queueWidgetSync } from './perf/batch_sync';
 import * as puerts from 'puerts';
 export abstract class ElementConverter {
     typeName: string;
@@ -157,7 +158,10 @@ export abstract class ElementConverter {
 
         if (!isEmpty(widgetProps)) {
             puerts.merge(widget, widgetProps);
-            UE.UMGManager.SynchronizeWidgetProperties(widget);
+            // Queued for batched flush instead of immediate sync.
+            // All widgets touched in one reconciler commit are synced
+            // together in resetAfterCommit, eliminating redundant calls.
+            queueWidgetSync(widget);
         }
     }
 }

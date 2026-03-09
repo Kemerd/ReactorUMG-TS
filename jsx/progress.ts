@@ -4,6 +4,7 @@ import { getAllStyles } from "../parsers/cssstyle_parser";
 import { parseBackgroundProps } from "../parsers/css_background_parser";
 import { parseToLinearColor } from "../parsers/css_color_parser";
 import { safeParseFloat } from "../misc/utils";
+import { queueWidgetSync } from "../perf/batch_sync";
 
 const DEFAULT_MAX = 100;
 const DEFAULT_MIN = 0;
@@ -377,8 +378,8 @@ export class ProgressConverter extends JSXConverter {
             setTimeout(() => this.handleFocus("auto"), 0);
         }
 
-        UE.UMGManager.SynchronizeWidgetProperties(this.progressBar);
-        UE.UMGManager.SynchronizeWidgetProperties(this.button);
+        queueWidgetSync(this.progressBar);
+        queueWidgetSync(this.button);
 
         return this.button;
     }
@@ -397,8 +398,8 @@ export class ProgressConverter extends JSXConverter {
         this.applyValueState(nextProps);
         this.updateInteractivity(nextProps);
 
-        UE.UMGManager.SynchronizeWidgetProperties(this.progressBar);
-        UE.UMGManager.SynchronizeWidgetProperties(button);
+        queueWidgetSync(this.progressBar);
+        queueWidgetSync(button);
     }
 
     removeChild(parent: UE.Widget, child: UE.Widget) {

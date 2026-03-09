@@ -1,5 +1,6 @@
 import * as UE from 'ue';
 import { UMGConverter } from '../umg_converter';
+import { queueWidgetSync } from '../../perf/batch_sync';
 
 export class ViewportConverter extends UMGConverter {
     constructor(typeName: string, props: any, outer: any) {
@@ -13,6 +14,6 @@ export class ViewportConverter extends UMGConverter {
 
     update(widget: UE.Widget, oldProps: any, changedProps: any): void {
         const viewport = widget as UE.Viewport;
-        UE.UMGManager.SynchronizeWidgetProperties(viewport);
+        queueWidgetSync(viewport);
     }
 }

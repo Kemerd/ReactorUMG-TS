@@ -2,6 +2,7 @@ import { parseWidgetSelfAlignment } from "../parsers/alignment_parser";
 import { getAllStyles } from "../parsers/cssstyle_parser";
 import { convertLengthUnitToSlateUnit } from "../parsers/css_length_parser";
 import { ContainerConverter } from "./container_converter";
+import { queueSlotSync } from "../perf/batch_sync";
 import * as UE from "ue";
 
 type OverlayChildMeta = {
@@ -42,6 +43,15 @@ export class OverlayConverter extends ContainerConverter {
 
     appendChild(parent: UE.Widget, child: UE.Widget, childTypeName: string, childProps: any): void {
         const overlay = parent as UE.Overlay;
+
+        // Lazy slot: add collapsed children to the overlay but skip
+        // the style resolution, alignment, and absolute layout work.
+        if (this.isChildCollapsed(child)) {
+            overlay.AddChildToOverlay(child);
+            this._deferredSlots.set(child, { typeName: childTypeName, props: childProps });
+            return;
+        }
+
         const overlaySlot = overlay.AddChildToOverlay(child);
         const style = getAllStyles(childTypeName, childProps);
         if (!overlaySlot) {
@@ -86,9 +96,71 @@ export class OverlayConverter extends ContainerConverter {
 
         if (styleLeft.endsWith("%") && styleLeft === "50%") { overlaySlot.SetHorizontalAlignment(UE.EHorizontalAlignment.HAlign_Center); }
         if (styleTop.endsWith("%") && styleTop === "50%") { overlaySlot.SetVerticalAlignment(UE.EVerticalAlignment.VAlign_Center); }
-        UE.UMGManager.SynchronizeSlotProperties(overlaySlot);
+        queueSlotSync(overlaySlot);
 
         this.scheduleAbsoluteChildLayout(meta, style, 0);
+    }
+
+    /**
+     * Completes deferred slot configuration for an overlay child that
+     * was Collapsed at mount time.  Applies alignment, absolute
+     * positioning, and padding using the existing slot.
+     */
+    completeDeferredSlotSetup(parent: UE.Widget, child: UE.Widget): void {
+        const deferred = this._deferredSlots.get(child);
+        if (!deferred) return;
+        this._deferredSlots.delete(child);
+
+        const style = getAllStyles(deferred.typeName, deferred.props);
+        const overlaySlot = (child as any).Slot as UE.OverlaySlot;
+        if (!overlaySlot) return;
+
+        const overlay = parent as UE.Overlay;
+
+        // Track z-index
+        const zIndex = this.extractZIndex(style);
+        if (zIndex !== 0) {
+            this.childZIndices.set(child, zIndex);
+        }
+
+        const alignment = parseWidgetSelfAlignment(style);
+        overlaySlot.SetHorizontalAlignment(alignment.horizontal);
+        overlaySlot.SetVerticalAlignment(alignment.vertical);
+        overlaySlot.SetPadding(alignment.padding);
+
+        // Handle absolute positioning if relevant
+        const isAbsolute = this.isAbsolutePositioned(style);
+        if (!isAbsolute) {
+            this.absoluteChildren.delete(child);
+            queueSlotSync(overlaySlot);
+            return;
+        }
+
+        const meta: OverlayChildMeta = {
+            child,
+            parent: overlay,
+            slot: overlaySlot,
+            typeName: deferred.typeName,
+            props: deferred.props,
+        };
+        this.absoluteChildren.set(child, meta);
+
+        overlaySlot.SetHorizontalAlignment(UE.EHorizontalAlignment.HAlign_Left);
+        overlaySlot.SetVerticalAlignment(UE.EVerticalAlignment.VAlign_Top);
+        overlaySlot.SetPadding(new UE.Margin(0, 0, 0, 0));
+
+        const styleLeft = style?.left;
+        const styleTop = style?.top;
+        if (styleLeft || styleTop) {
+            if (styleLeft && styleLeft.endsWith("%") && styleLeft === "50%") {
+                overlaySlot.SetHorizontalAlignment(UE.EHorizontalAlignment.HAlign_Center);
+            }
+            if (styleTop && styleTop.endsWith("%") && styleTop === "50%") {
+                overlaySlot.SetVerticalAlignment(UE.EVerticalAlignment.VAlign_Center);
+            }
+            queueSlotSync(overlaySlot);
+            this.scheduleAbsoluteChildLayout(meta, style, 0);
+        }
     }
 
     removeChild(parent: UE.Widget, child: UE.Widget): void {
@@ -170,7 +242,7 @@ export class OverlayConverter extends ContainerConverter {
             slot.SetPadding(new UE.Margin(paddingLeft, paddingTop, 0, 0));
         }
 
-        UE.UMGManager.SynchronizeSlotProperties(slot);
+        queueSlotSync(slot);
     }
 
     private computeTransformTranslation(style: any, childSize: UE.Vector2D) {

@@ -12,6 +12,8 @@ import {
     routeTabNavigation,
     EventDispatcher,
 } from './events';
+import { flushSyncQueue, clearSyncQueue } from './perf/batch_sync';
+import { getWidgetPool, destroyWidgetPool, isPoolableType } from './perf/widget_pool';
 
 const REACT_ELEMENT_TYPE = typeof Symbol === 'function' ? Symbol.for('react.element') : 0;
 
@@ -182,7 +184,21 @@ class UMGWidget {
         try {
             const WidgetTreeOuter = this.rootContainer.widgetTree;
             this.converter = createElementConverter(this.typeName, this.props, WidgetTreeOuter);
-            this.native = this.converter.createWidget();
+
+            // Attempt to acquire a recycled widget from the pool before
+            // constructing a fresh one. Pool hits avoid UObject allocation
+            // and reduce GC pressure during rapid mount/unmount cycles.
+            const pool = getWidgetPool();
+            const recycled = pool.acquire(this.typeName);
+            if (recycled) {
+                this.native = recycled;
+                // Re-apply all props to the recycled widget so it reflects
+                // the current element's desired state
+                this.converter.updateWidget(this.native, {}, this.props);
+            } else {
+                this.native = this.converter.createWidget();
+            }
+
             const shouldIgnore = (this.converter as any)?.ignore === true;
             if (this.native === null && !shouldIgnore) {
                 console.warn("Not supported widget: " + this.typeName);
@@ -212,6 +228,12 @@ class UMGWidget {
         // Allow converters that produce no native widget (e.g. <style>) to still
         // receive prop updates by checking canUpdateWithoutNative().
         if (this.native !== null || this.converter.canUpdateWithoutNative()) {
+            // Snapshot visibility before the update so we can detect
+            // Collapsed -> visible transitions for lazy slot completion
+            const wasCollapsed = this.native
+                ? this.native.Visibility === UE.ESlateVisibility.Collapsed
+                : false;
+
             this.props = { ...newProps, __parentProps: this.parentProps };
             this.converter.updateWidget(this.native, oldProps, newProps);
 
@@ -219,6 +241,31 @@ class UMGWidget {
             if (this._eventNode) {
                 syncEventHandlers(this._eventNode, newProps);
             }
+
+            // When a widget transitions from Collapsed to any visible state,
+            // the parent converter may have deferred its slot configuration
+            // at mount time.  Trigger the deferred setup now so alignment,
+            // padding, sizing, and gap are applied correctly.
+            if (wasCollapsed && this.native
+                && this.native.Visibility !== UE.ESlateVisibility.Collapsed) {
+                this._completeDeferredParentSlot();
+            }
+        }
+    }
+
+    /**
+     * Asks the parent container converter to complete any deferred slot
+     * configuration for this widget.  Called when visibility transitions
+     * from Collapsed to a visible state.
+     */
+    private _completeDeferredParentSlot(): void {
+        if (!this.parentUMGWidget?.converter || !this.native) return;
+
+        const parentConverter = this.parentUMGWidget.converter;
+        if (typeof (parentConverter as any).completeDeferredSlotSetup === 'function') {
+            (parentConverter as any).completeDeferredSlotSetup(
+                this.parentUMGWidget.native, this.native
+            );
         }
     }
 
@@ -363,7 +410,20 @@ class UMGWidget {
         // Clear parent reference
         this.parentUMGWidget = null;
 
-        // Null out native reference so UObject pointer is released
+        // Attempt to return the native widget to the pool for future reuse
+        // instead of letting it be garbage collected. Only structurally simple
+        // widget types are eligible for pooling.
+        if (this.native && isPoolableType(this.typeName)) {
+            const pooled = getWidgetPool().release(this.typeName, this.native);
+            if (pooled) {
+                // Widget is now in the pool – clear our reference but
+                // the pool holds a strong ref for future reuse
+                this.native = null;
+                return;
+            }
+        }
+
+        // Widget wasn't pooled – null out reference for GC
         this.native = null;
     }
 
@@ -440,7 +500,14 @@ const hostConfig : Reconciler.HostConfig<string, any, RootContainer, UMGWidget, 
     finalizeInitialChildren () { return false; },
     getPublicInstance (instance: UMGWidget) { return instance.native; },
     prepareForCommit(containerInfo: RootContainer): any {},
-    resetAfterCommit (container: RootContainer) {},
+    resetAfterCommit (container: RootContainer) {
+        // Drain the batched property sync queue. All widgets/slots touched
+        // during this commit get a single SynchronizeProperties() call here,
+        // eliminating the 2-3x redundant calls that happen per widget when
+        // common props, converter-specific props, and events are each synced
+        // independently.
+        flushSyncQueue();
+    },
     resetTextContent (instance: UMGWidget) { },
     shouldSetTextContent (type, props) {
         const textContainers = new Set([
@@ -538,6 +605,11 @@ export const ReactorUMG = {
         reconciler.updateContainer(null, root.reconcilerContainer, null, null);
         // Tear down the event system when the React tree is unmounted
         disposeEventSystem();
+        // Clear pending syncs to prevent stale widget references from
+        // being synced after the tree is destroyed
+        clearSyncQueue();
+        // Release all pooled widgets back to GC
+        destroyWidgetPool();
     },
 
     /**

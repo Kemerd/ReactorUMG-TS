@@ -3,6 +3,7 @@ import { JSXConverter } from './jsx_converter';
 import { ImageLoader } from '../misc/image_loader';
 import { parseToLinearColor } from '../parsers/css_color_parser';
 import { getAllStyles } from '../parsers/cssstyle_parser';
+import { queueWidgetSync } from '../perf/batch_sync';
 
 /**
  * 支持的图片源src类型：
@@ -144,7 +145,7 @@ export class ImageConverter extends JSXConverter {
         }
 
         if (setupProps) {
-            UE.UMGManager.SynchronizeWidgetProperties(this.image);
+            queueWidgetSync(this.image);
         }
 
         return this.scaleBox ? (this.scaleBox as unknown as UE.Widget) : this.image;
@@ -178,7 +179,7 @@ export class ImageConverter extends JSXConverter {
                 this.image.Brush.ImageSize.X = actualWidth;
                 this.image.Brush.ImageSize.Y = actualHeight;
                 this.image.SetDesiredSizeOverride(new UE.Vector2D(actualWidth, actualHeight));
-                UE.UMGManager.SynchronizeWidgetProperties(this.image);
+                queueWidgetSync(this.image);
             }
         }
 
@@ -188,7 +189,7 @@ export class ImageConverter extends JSXConverter {
             this.image.ColorAndOpacity.G = rgba.g;
             this.image.ColorAndOpacity.B = rgba.b;
             this.image.ColorAndOpacity.A = rgba.a;
-            UE.UMGManager.SynchronizeWidgetProperties(this.image);
+            queueWidgetSync(this.image);
         }
 
         // Update object-fit if style changed
@@ -202,7 +203,7 @@ export class ImageConverter extends JSXConverter {
                 case 'none': this.scaleBox.SetStretch(UE.EStretch.None); break;
                 case 'scale-down': this.scaleBox.SetStretch(UE.EStretch.UserSpecifiedWithClipping); break;
             }
-            UE.UMGManager.SynchronizeWidgetProperties(this.scaleBox);
+            queueWidgetSync(this.scaleBox);
         }
     }
 }

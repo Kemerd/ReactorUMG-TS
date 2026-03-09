@@ -2,6 +2,7 @@ import * as UE from 'ue';
 import { UMGConverter } from '../umg_converter';
 import { parseToLinearColor } from '../../parsers/css_color_parser';
 import { parseBrush } from '../../parsers/brush_parser';
+import { queueWidgetSync } from '../../perf/batch_sync';
 
 export class SliderConverter extends UMGConverter {
     constructor(typeName: string, props: any, outer: any) {
@@ -126,7 +127,7 @@ export class SliderConverter extends UMGConverter {
         const slider = new UE.Slider(this.outer);
         const propsInit = this.initProps(slider, this.props);
         if (propsInit) {
-            UE.UMGManager.SynchronizeWidgetProperties(slider);
+            queueWidgetSync(slider);
         }
         return slider;
     }
@@ -135,7 +136,7 @@ export class SliderConverter extends UMGConverter {
         const slider = widget as UE.Slider;
         const propsChanged = this.initProps(slider, changedProps);
         if (propsChanged) {
-            UE.UMGManager.SynchronizeWidgetProperties(slider);
+            queueWidgetSync(slider);
         }
     }
     
