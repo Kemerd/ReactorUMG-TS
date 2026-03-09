@@ -824,10 +824,6 @@ declare module "reactorumg" {
         alwaysShowScrollbar?: boolean | undefined;
         /** Allow overscroll bounce */
         allowOverscroll?: boolean | undefined;
-        /** Whether the list can receive focus */
-        focusable?: boolean | undefined;
-        /** Background brush for the list area */
-        backgroundBrush?: ImageStyle | undefined;
         /** Scroll position changed callback */
         onScroll?: (offset: number) => void;
     }
@@ -856,8 +852,6 @@ declare module "reactorumg" {
         alwaysShowScrollbar?: boolean | undefined;
         /** Allow overscroll bounce */
         allowOverscroll?: boolean | undefined;
-        /** Whether the tree can receive focus */
-        focusable?: boolean | undefined;
     }
 
     class TreeView extends React.Component<TreeViewProps> {

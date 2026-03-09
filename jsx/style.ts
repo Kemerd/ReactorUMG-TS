@@ -76,6 +76,7 @@ export class StyleTagConverter extends ElementConverter {
 
     dispose(): void {
         clearInlineStylesForSource(this.sourceId);
+        super.dispose();
     }
 
     /**

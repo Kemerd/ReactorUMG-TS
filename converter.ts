@@ -2,7 +2,7 @@ import * as UE from 'ue';
 import { findChangedProps, isEmpty, isKeyOfRecord, safeParseFloat } from './misc/utils';
 import { getAllStyles } from './parsers/cssstyle_parser';
 import { parseCursor, parseTransform, parseTransformPivot, parseTranslate, parseVisibility } from './parsers/common_props_parser';
-import { processStyleTransitions } from './parsers/css_transition_engine';
+import { processStyleTransitions, cancelWidgetTransitions } from './parsers/css_transition_engine';
 import * as puerts from 'puerts';
 export abstract class ElementConverter {
     typeName: string;
@@ -103,9 +103,21 @@ export abstract class ElementConverter {
     abstract appendChild(parent: UE.Widget, child: UE.Widget, childTypeName: string, childProps: any): void;
     abstract removeChild(parent: UE.Widget, child: UE.Widget): void;
     canUpdateWithoutNative(): boolean { return false; }
-    dispose(): void {}
+
+    /** Reference to the native widget, kept for transition cleanup on dispose */
+    protected _nativeRef: UE.Widget | null = null;
+
+    dispose(): void {
+        // Cancel any in-flight CSS transitions/animations on this widget
+        if (this._nativeRef) {
+            cancelWidgetTransitions(this._nativeRef);
+            this._nativeRef = null;
+        }
+    }
+
     createWidget(): UE.Widget {
         let widget = this.createNativeWidget();
+        this._nativeRef = widget;
         this.initOrUpdateCommonProperties(widget, this.props);
         return widget;
     }

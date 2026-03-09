@@ -1,6 +1,7 @@
 import { UMGConverter } from "./umg_converter";
 import * as UE from 'ue';
 import * as puerts from 'puerts';
+import { ALL_EVENT_PROPS_WITH_CAPTURE } from '../events';
 
 export class NativeWidgetConverter extends UMGConverter {
     private callbackRecords: {[key: string] : () => void};
@@ -15,7 +16,7 @@ export class NativeWidgetConverter extends UMGConverter {
         let widget: UE.Widget;
         if (classPath)  {
             widget = UE.NewObject(UE.Class.Load(classPath), this.outer) as UE.Widget;
-        } else {
+    } else {
             widget = new UE[this.typeName](this.outer);
         }
 
@@ -55,6 +56,10 @@ export class NativeWidgetConverter extends UMGConverter {
 
         let mergeProps = {};
         for (const key in this.props) {
+            // Skip React event handler props (onClick, onKeyDownCapture, etc.)
+            // These are handled by the ReactorUMG event dispatcher, not UE delegates.
+            if (ALL_EVENT_PROPS_WITH_CAPTURE.has(key)) continue;
+
             let val = this.props[key];
             if (typeof val === 'function') {
                 this.bindEvents(widget, key, val);
@@ -71,6 +76,9 @@ export class NativeWidgetConverter extends UMGConverter {
     update(widget: UE.Widget, oldProps: any, changedProps: any): void {
         let propsChanged = {};
         for (const key in changedProps) {
+            // Skip React event handler props - managed by event dispatcher
+            if (ALL_EVENT_PROPS_WITH_CAPTURE.has(key)) continue;
+
             let val = changedProps[key];
             if (key !== 'children') {
                 if (typeof val === 'function') {
@@ -80,7 +88,6 @@ export class NativeWidgetConverter extends UMGConverter {
                     propsChanged[key] = val;
                 }
             }
-
         }
 
         if (propsChanged) {

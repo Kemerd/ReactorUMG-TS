@@ -24,8 +24,7 @@ export class ListViewConverter extends UMGConverter {
     /* ------------------------------------------------------------------ */
     /*  Event callback storage for proper teardown / rebinding             */
     /* ------------------------------------------------------------------ */
-    private onScrollCallback?: (offset: number, remaining: number) => void;
-    private onItemClickCallback?: (index: number) => void;
+    private onScrollHandler?: (currentOffset: number) => void;
 
     constructor(typeName: string, props: any, outer: any) {
         super(typeName, props, outer);
@@ -111,20 +110,25 @@ export class ListViewConverter extends UMGConverter {
     }
 
     /* ================================================================== */
-    /*  Scroll event binding                                               */
+    /*  Scroll event binding via ScrollBox.OnUserScrolled delegate          */
     /* ================================================================== */
     private bindScrollEvent(scrollBox: UE.ScrollBox, props: any): boolean {
-        // UE.ScrollBox exposes OnUserScrolled delegate
-        // We use it to surface scroll position changes to React
         const onScroll = props?.onScroll;
+
+        // Teardown previous handler to avoid duplicate bindings
+        if (this.onScrollHandler) {
+            scrollBox.OnUserScrolled.Remove(this.onScrollHandler);
+            this.onScrollHandler = undefined;
+        }
+
         if (typeof onScroll !== 'function') return false;
 
-        // ScrollBox doesn't expose a managed scroll delegate in the same way
-        // ListView does, so we store the callback for future ticking or
-        // manual polling.  This is a known limitation until the C++ layer
-        // adds scroll callbacks.
-        (scrollBox as any).__onScrollCallback = onScroll;
-        return false;
+        // Bind to the native OnUserScrolled delegate
+        this.onScrollHandler = (currentOffset: number) => {
+            try { onScroll(currentOffset); } catch (e) { console.warn('ListView onScroll error:', e); }
+        };
+        scrollBox.OnUserScrolled.Add(this.onScrollHandler);
+        return true;
     }
 
     /* ================================================================== */
@@ -212,5 +216,13 @@ export class ListViewConverter extends UMGConverter {
         if (parent instanceof UE.PanelWidget) {
             parent.RemoveChild(child);
         }
+    }
+
+    /* ================================================================== */
+    /*  Cleanup: unbind scroll event on disposal                           */
+    /* ================================================================== */
+    dispose(): void {
+        this.onScrollHandler = undefined;
+        this.childSlots.clear();
     }
 }

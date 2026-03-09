@@ -737,8 +737,17 @@ export class EventDispatcher {
         const widget = node.widget;
         if (!widget) return;
 
-        // Skip if already bound
+        // Skip if already bound by the dispatcher
         if (this._boundCallbacks.has(widget)) return;
+
+        // --- UE.Button: SKIP dispatcher-level binding ---
+        // ButtonConverter (button.ts) already binds OnClicked/OnPressed/OnReleased/
+        // OnHovered/OnUnhovered directly in its setButtonEventHandlers() method.
+        // Binding again here would cause double-fire. The EventNode is still
+        // registered for tree structure so future bubbling can traverse it.
+        if (widget instanceof UE.Button) {
+            return;
+        }
 
         const callbackMap = new Map<string, Function>();
         this._boundCallbacks.set(widget, callbackMap);
@@ -749,21 +758,15 @@ export class EventDispatcher {
             return;
         }
 
-        // --- UE.Button: already has multicast delegates, wire clicks through dispatcher ---
-        if (widget instanceof UE.Button) {
-            this._bindButtonEvents(node, widget, callbackMap);
+        // --- UE.Image: ImageConverter (img.ts) already binds OnMouseButtonDownEvent
+        // for onClick, so we skip raw Image widgets to avoid double-fire. ---
+        if (widget instanceof UE.Image) {
             return;
         }
 
-        // --- For all other widgets: create a transparent Border wrapper ---
-        // This is the general-purpose approach for making arbitrary widgets
-        // receive mouse events. We wrap the widget's content in a Border.
-        // NOTE: This wrapping is done at the EventNode level and doesn't
-        // affect the React tree structure.
-        //
-        // However, for most practical cases the widget IS already wrapped
-        // in a Border (from ContainerConverter.setupBackground). If so,
-        // we bind to that existing Border instead.
+        // --- For other widget types: try to find an existing parent Border ---
+        // Most practical widgets are wrapped in a Border by ContainerConverter's
+        // setupBackground(). If a parent Border exists, bind mouse events to it.
         const parentWidget = widget.GetParent?.();
         if (parentWidget instanceof UE.Border) {
             this._bindBorderMouseEvents(node, parentWidget as UE.Border, callbackMap);
@@ -781,19 +784,25 @@ export class EventDispatcher {
      * Binds UE.Border mouse event delegates to route through our dispatcher.
      */
     private _bindBorderMouseEvents(node: EventNode, border: UE.Border, callbackMap: Map<string, Function>): void {
-        // MouseButtonDown -> dispatches "mousedown" and potentially "click"
+        // IMPORTANT: We return WidgetBlueprintLibrary.Handled() from all callbacks.
+        // This tells UMG to stop propagating the event to parent widgets' delegates.
+        // Bubbling to React parent components is handled by our own propagation
+        // engine, so allowing UMG to also propagate would cause double-fire on
+        // nested Borders (e.g., <div onClick={outer}><div onClick={inner}>).
+
+        // MouseButtonDown -> dispatches "mousedown" and potentially "contextmenu"
         const onDown = (geometry: UE.Geometry, pointerEvent: UE.PointerEvent): UE.EventReply => {
             this.dispatchMouseEvent('mousedown', pointerEvent, node);
 
             // Right-click -> contextmenu
             try {
-                const button = UE.WidgetBlueprintLibrary.PointerEvent_GetEffectingButton(pointerEvent);
-                if (button?.KeyName === 'RightMouseButton') {
+                const btn = UE.WidgetBlueprintLibrary.PointerEvent_GetEffectingButton(pointerEvent);
+                if (btn?.KeyName === 'RightMouseButton') {
                     this.dispatchMouseEvent('contextmenu', pointerEvent, node);
                 }
             } catch { /* ignore */ }
 
-            return new UE.EventReply();
+            return UE.WidgetBlueprintLibrary.Handled();
         };
         border.OnMouseButtonDownEvent.Bind(onDown);
         callbackMap.set('OnMouseButtonDownEvent', onDown);
@@ -804,16 +813,15 @@ export class EventDispatcher {
 
             // Fire "click" on mouseup (matching DOM behavior for left-click)
             try {
-                const button = UE.WidgetBlueprintLibrary.PointerEvent_GetEffectingButton(pointerEvent);
-                if (!button || button.KeyName === 'LeftMouseButton') {
+                const btn = UE.WidgetBlueprintLibrary.PointerEvent_GetEffectingButton(pointerEvent);
+                if (!btn || btn.KeyName === 'LeftMouseButton') {
                     this.dispatchMouseEvent('click', pointerEvent, node);
                 }
             } catch {
-                // Fallback: always fire click on mouseup
                 this.dispatchMouseEvent('click', pointerEvent, node);
             }
 
-            return new UE.EventReply();
+            return UE.WidgetBlueprintLibrary.Handled();
         };
         border.OnMouseButtonUpEvent.Bind(onUp);
         callbackMap.set('OnMouseButtonUpEvent', onUp);
@@ -821,7 +829,7 @@ export class EventDispatcher {
         // MouseMove -> dispatches "mousemove"
         const onMove = (geometry: UE.Geometry, pointerEvent: UE.PointerEvent): UE.EventReply => {
             this.dispatchMouseEvent('mousemove', pointerEvent, node);
-            return new UE.EventReply();
+            return UE.WidgetBlueprintLibrary.Handled();
         };
         border.OnMouseMoveEvent.Bind(onMove);
         callbackMap.set('OnMouseMoveEvent', onMove);
@@ -829,83 +837,10 @@ export class EventDispatcher {
         // DoubleClick -> dispatches "dblclick"
         const onDblClick = (geometry: UE.Geometry, pointerEvent: UE.PointerEvent): UE.EventReply => {
             this.dispatchMouseEvent('dblclick', pointerEvent, node);
-            return new UE.EventReply();
+            return UE.WidgetBlueprintLibrary.Handled();
         };
         border.OnMouseDoubleClickEvent.Bind(onDblClick);
         callbackMap.set('OnMouseDoubleClickEvent', onDblClick);
-    }
-
-    /**
-     * Binds UE.Button multicast delegates to route through our dispatcher.
-     * Buttons have their own event model (OnClicked, OnHovered, etc.) that
-     * we translate into standard DOM-like events.
-     */
-    private _bindButtonEvents(node: EventNode, button: UE.Button, callbackMap: Map<string, Function>): void {
-        // OnClicked -> "click"
-        if (node.hasHandler('onClick')) {
-            const onClick = () => {
-                // Create a minimal synthetic mouse event (no native pointer event available)
-                const synth = new SyntheticMouseEvent('click', null);
-                synth.target = node.umgWidget;
-                this._propagate(synth, node);
-            };
-            button.OnClicked.Add(onClick);
-            callbackMap.set('OnClicked', onClick);
-        }
-
-        // OnPressed -> "mousedown"
-        if (node.hasHandler('onMouseDown')) {
-            const onDown = () => {
-                const synth = new SyntheticMouseEvent('mousedown', null);
-                synth.target = node.umgWidget;
-                this._propagate(synth, node);
-            };
-            button.OnPressed.Add(onDown);
-            callbackMap.set('OnPressed', onDown);
-        }
-
-        // OnReleased -> "mouseup"
-        if (node.hasHandler('onMouseUp')) {
-            const onUp = () => {
-                const synth = new SyntheticMouseEvent('mouseup', null);
-                synth.target = node.umgWidget;
-                this._propagate(synth, node);
-            };
-            button.OnReleased.Add(onUp);
-            callbackMap.set('OnReleased', onUp);
-        }
-
-        // OnHovered -> "mouseenter"
-        if (node.hasHandler('onMouseEnter') || node.hasHandler('onMouseOver')) {
-            const onHover = () => {
-                const synth = new SyntheticMouseEvent('mouseenter', null, false);
-                synth.target = node.umgWidget;
-                this._propagate(synth, node);
-
-                // Also fire mouseover (which DOES bubble)
-                const synthOver = new SyntheticMouseEvent('mouseover', null, true);
-                synthOver.target = node.umgWidget;
-                this._propagate(synthOver, node);
-            };
-            button.OnHovered.Add(onHover);
-            callbackMap.set('OnHovered', onHover);
-        }
-
-        // OnUnhovered -> "mouseleave"
-        if (node.hasHandler('onMouseLeave') || node.hasHandler('onMouseOut')) {
-            const onUnhover = () => {
-                const synth = new SyntheticMouseEvent('mouseleave', null, false);
-                synth.target = node.umgWidget;
-                this._propagate(synth, node);
-
-                // Also fire mouseout (which DOES bubble)
-                const synthOut = new SyntheticMouseEvent('mouseout', null, true);
-                synthOut.target = node.umgWidget;
-                this._propagate(synthOut, node);
-            };
-            button.OnUnhovered.Add(onUnhover);
-            callbackMap.set('OnUnhovered', onUnhover);
-        }
     }
 
     /**
@@ -937,26 +872,9 @@ export class EventDispatcher {
             } catch { /* widget may already be destroyed */ }
         }
 
-        // For Button multicast delegates, use Remove()
-        if (widget instanceof UE.Button) {
-            const button = widget as UE.Button;
-            try {
-                const clicked = callbackMap.get('OnClicked');
-                if (clicked) button.OnClicked.Remove(clicked);
-
-                const pressed = callbackMap.get('OnPressed');
-                if (pressed) button.OnPressed.Remove(pressed);
-
-                const released = callbackMap.get('OnReleased');
-                if (released) button.OnReleased.Remove(released);
-
-                const hovered = callbackMap.get('OnHovered');
-                if (hovered) button.OnHovered.Remove(hovered);
-
-                const unhovered = callbackMap.get('OnUnhovered');
-                if (unhovered) button.OnUnhovered.Remove(unhovered);
-            } catch { /* widget may already be destroyed */ }
-        }
+        // NOTE: Button and Image event binding is handled by their respective
+        // converters (button.ts, img.ts). The dispatcher does not bind to
+        // those widget types, so no cleanup is needed here for them.
 
         callbackMap.clear();
         this._boundCallbacks.delete(widget);

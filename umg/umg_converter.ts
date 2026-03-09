@@ -169,6 +169,7 @@ export class UMGConverter extends ElementConverter {
         if (this.proxy) {
             this.proxy.dispose();
         }
+        super.dispose();
     }
     
 }

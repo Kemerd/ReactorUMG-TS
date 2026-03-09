@@ -91,5 +91,6 @@ export class JSXConverter extends ElementConverter {
         if (this.proxy && typeof this.proxy.dispose === 'function') {
             this.proxy.dispose();
         }
+        super.dispose();
     }
 }
