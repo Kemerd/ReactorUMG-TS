@@ -16,6 +16,204 @@ declare module "reactorumg" {
 
     type TextCommitType = 'default' | 'enter' | 'mouse-focus' | 'clear';
 
+    /* ------------------------------------------------------------------ */
+    /*  Synthetic Event Types                                              */
+    /* ------------------------------------------------------------------ */
+
+    /**
+     * Base synthetic event mirroring React's SyntheticEvent.
+     * Provides stopPropagation(), preventDefault(), and propagation phases.
+     */
+    interface BaseSyntheticEvent<TNative = any> {
+        type: string;
+        target: any;
+        currentTarget: any;
+        nativeEvent: TNative;
+        bubbles: boolean;
+        cancelable: boolean;
+        eventPhase: number;
+        timeStamp: number;
+        isTrusted: boolean;
+        stopPropagation(): void;
+        isPropagationStopped(): boolean;
+        stopImmediatePropagation(): void;
+        isImmediatePropagationStopped(): boolean;
+        preventDefault(): void;
+        isDefaultPrevented(): boolean;
+        persist(): void;
+    }
+
+    /**
+     * Mouse event with screen positions, button info, and modifier keys.
+     */
+    interface MouseEvent extends BaseSyntheticEvent {
+        clientX: number;
+        clientY: number;
+        pageX: number;
+        pageY: number;
+        screenX: number;
+        screenY: number;
+        button: number;
+        buttons: number;
+        movementX: number;
+        movementY: number;
+        altKey: boolean;
+        ctrlKey: boolean;
+        shiftKey: boolean;
+        metaKey: boolean;
+    }
+
+    /**
+     * Wheel/scroll event extending mouse event.
+     */
+    interface WheelEvent extends MouseEvent {
+        deltaX: number;
+        deltaY: number;
+        deltaZ: number;
+        deltaMode: number;
+    }
+
+    /**
+     * Keyboard event with key name, code, and modifier keys.
+     */
+    interface KeyboardEvent extends BaseSyntheticEvent {
+        key: string;
+        code: string;
+        repeat: boolean;
+        altKey: boolean;
+        ctrlKey: boolean;
+        shiftKey: boolean;
+        metaKey: boolean;
+    }
+
+    /**
+     * Focus event with relatedTarget for the other focus participant.
+     */
+    interface FocusEvent extends BaseSyntheticEvent {
+        relatedTarget: any;
+    }
+
+    /**
+     * Touch point representing a single finger/pointer contact.
+     */
+    interface TouchPoint {
+        identifier: number;
+        clientX: number;
+        clientY: number;
+        screenX: number;
+        screenY: number;
+        pageX: number;
+        pageY: number;
+        target: any;
+    }
+
+    /**
+     * Touch event with touch lists.
+     */
+    interface TouchEvent extends BaseSyntheticEvent {
+        touches: ReadonlyArray<TouchPoint>;
+        changedTouches: ReadonlyArray<TouchPoint>;
+        targetTouches: ReadonlyArray<TouchPoint>;
+        altKey: boolean;
+        ctrlKey: boolean;
+        shiftKey: boolean;
+        metaKey: boolean;
+    }
+
+    /**
+     * Drag event extending mouse event with dataTransfer.
+     */
+    interface DragEvent extends MouseEvent {
+        dataTransfer: {
+            setData(format: string, data: string): void;
+            getData(format: string): string;
+            clearData(format?: string): void;
+        };
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*  Event Handler Types                                                */
+    /* ------------------------------------------------------------------ */
+
+    type MouseEventHandler = (event: MouseEvent) => void;
+    type WheelEventHandler = (event: WheelEvent) => void;
+    type KeyboardEventHandler = (event: KeyboardEvent) => void;
+    type FocusEventHandler = (event: FocusEvent) => void;
+    type TouchEventHandler = (event: TouchEvent) => void;
+    type DragEventHandler = (event: DragEvent) => void;
+
+    /**
+     * All standard DOM-like event handler props supported by ReactorUMG.
+     * These are available on all widget types via CommonProps.
+     */
+    interface EventHandlerProps {
+        // --- Mouse Events ---
+        onClick?: MouseEventHandler | undefined;
+        onClickCapture?: MouseEventHandler | undefined;
+        onDoubleClick?: MouseEventHandler | undefined;
+        onDoubleClickCapture?: MouseEventHandler | undefined;
+        onContextMenu?: MouseEventHandler | undefined;
+        onContextMenuCapture?: MouseEventHandler | undefined;
+        onMouseDown?: MouseEventHandler | undefined;
+        onMouseDownCapture?: MouseEventHandler | undefined;
+        onMouseUp?: MouseEventHandler | undefined;
+        onMouseUpCapture?: MouseEventHandler | undefined;
+        onMouseMove?: MouseEventHandler | undefined;
+        onMouseMoveCapture?: MouseEventHandler | undefined;
+        onMouseEnter?: MouseEventHandler | undefined;
+        onMouseLeave?: MouseEventHandler | undefined;
+        onMouseOver?: MouseEventHandler | undefined;
+        onMouseOverCapture?: MouseEventHandler | undefined;
+        onMouseOut?: MouseEventHandler | undefined;
+        onMouseOutCapture?: MouseEventHandler | undefined;
+
+        // --- Wheel Events ---
+        onWheel?: WheelEventHandler | undefined;
+        onWheelCapture?: WheelEventHandler | undefined;
+
+        // --- Keyboard Events ---
+        onKeyDown?: KeyboardEventHandler | undefined;
+        onKeyDownCapture?: KeyboardEventHandler | undefined;
+        onKeyUp?: KeyboardEventHandler | undefined;
+        onKeyUpCapture?: KeyboardEventHandler | undefined;
+        onKeyPress?: KeyboardEventHandler | undefined;
+        onKeyPressCapture?: KeyboardEventHandler | undefined;
+
+        // --- Focus Events ---
+        onFocus?: FocusEventHandler | undefined;
+        onFocusCapture?: FocusEventHandler | undefined;
+        onBlur?: FocusEventHandler | undefined;
+        onBlurCapture?: FocusEventHandler | undefined;
+        onFocusIn?: FocusEventHandler | undefined;
+        onFocusOut?: FocusEventHandler | undefined;
+
+        // --- Touch Events ---
+        onTouchStart?: TouchEventHandler | undefined;
+        onTouchStartCapture?: TouchEventHandler | undefined;
+        onTouchMove?: TouchEventHandler | undefined;
+        onTouchMoveCapture?: TouchEventHandler | undefined;
+        onTouchEnd?: TouchEventHandler | undefined;
+        onTouchEndCapture?: TouchEventHandler | undefined;
+        onTouchCancel?: TouchEventHandler | undefined;
+        onTouchCancelCapture?: TouchEventHandler | undefined;
+
+        // --- Drag Events ---
+        onDragStart?: DragEventHandler | undefined;
+        onDragStartCapture?: DragEventHandler | undefined;
+        onDrag?: DragEventHandler | undefined;
+        onDragCapture?: DragEventHandler | undefined;
+        onDragEnd?: DragEventHandler | undefined;
+        onDragEndCapture?: DragEventHandler | undefined;
+        onDragEnter?: DragEventHandler | undefined;
+        onDragEnterCapture?: DragEventHandler | undefined;
+        onDragLeave?: DragEventHandler | undefined;
+        onDragLeaveCapture?: DragEventHandler | undefined;
+        onDragOver?: DragEventHandler | undefined;
+        onDragOverCapture?: DragEventHandler | undefined;
+        onDrop?: DragEventHandler | undefined;
+        onDropCapture?: DragEventHandler | undefined;
+    }
+
     interface Vector2D {
         x: number;
         y: number;
@@ -71,9 +269,11 @@ declare module "reactorumg" {
     }
 
     /**
-     * Common properties of widget
+     * Common properties of widget.
+     * Extends EventHandlerProps so all widgets can receive DOM-like
+     * mouse, keyboard, focus, touch, drag, and wheel events.
      */
-    export interface CommonProps {
+    export interface CommonProps extends EventHandlerProps {
         toolTip?: string | undefined;
         title?: string | undefined;
         disable?: boolean | undefined;
@@ -84,6 +284,10 @@ declare module "reactorumg" {
         clickMethod?: 'down-up' | 'down' | 'up' | 'precise-click' | undefined;
         touchMethod?: 'down-up' | 'down' | 'precise-tap' | undefined;
         pressMethod?: 'down-up' | 'press' | 'release' | undefined;
+        /** Whether this widget can receive keyboard focus */
+        focusable?: boolean | undefined;
+        /** Tab index for focus ordering (lower values receive focus first) */
+        tabIndex?: number | undefined;
         toolTipBinding?: () => string;
         titleBinding?: () => string;
         disableBinding?: () => boolean;
@@ -604,47 +808,126 @@ declare module "reactorumg" {
     }
 
     /**
-     * ListView components
+     * ListView: scrollable list of React children with item spacing and orientation.
+     * Built on UScrollBox for natural React reconciler compatibility.
      */
     interface ListViewProps extends PanelProps {
-
+        /** Scroll direction: 'vertical' (default) or 'horizontal' */
+        orientation?: 'vertical' | 'horizontal' | undefined;
+        /** Spacing between list items in pixels or CSS length */
+        spacing?: number | string | undefined;
+        /** Scrollbar thickness in pixels */
+        barThickness?: number | undefined;
+        /** Whether to show the scrollbar */
+        showScrollbar?: boolean | undefined;
+        /** Always keep scrollbar visible */
+        alwaysShowScrollbar?: boolean | undefined;
+        /** Allow overscroll bounce */
+        allowOverscroll?: boolean | undefined;
+        /** Whether the list can receive focus */
+        focusable?: boolean | undefined;
+        /** Background brush for the list area */
+        backgroundBrush?: ImageStyle | undefined;
+        /** Scroll position changed callback */
+        onScroll?: (offset: number) => void;
     }
-    class ListView extends React.Component<ListViewProps> {}
 
-    interface ListViewItemProps extends PanelProps {
-
+    class ListView extends React.Component<ListViewProps> {
+        native: UE.ScrollBox;
+        children: React.ReactNode;
     }
-
-    class ListViewItem extends React.Component<ListViewItemProps> {}
-
 
     /**
-     * TreeView components
+     * TreeView: scrollable container for hierarchical expandable/collapsible content.
+     * Express tree structure by nesting TreeViewItem components.
      */
     interface TreeViewProps extends PanelProps {
-
+        /** Scroll direction: 'vertical' (default) or 'horizontal' */
+        orientation?: 'vertical' | 'horizontal' | undefined;
+        /** Pixels of indentation per depth level (default: 16) */
+        indentation?: number | string | undefined;
+        /** Spacing between sibling tree nodes */
+        spacing?: number | string | undefined;
+        /** Scrollbar thickness in pixels */
+        barThickness?: number | undefined;
+        /** Whether to show the scrollbar */
+        showScrollbar?: boolean | undefined;
+        /** Always keep scrollbar visible */
+        alwaysShowScrollbar?: boolean | undefined;
+        /** Allow overscroll bounce */
+        allowOverscroll?: boolean | undefined;
+        /** Whether the tree can receive focus */
+        focusable?: boolean | undefined;
     }
-    class TreeView extends React.Component<TreeViewProps> {}
 
-    interface TreeViewItemProps extends PanelProps {
-
+    class TreeView extends React.Component<TreeViewProps> {
+        native: UE.ScrollBox;
+        children: React.ReactNode;
     }
-    class TreeViewItem extends React.Component<TreeViewItemProps> {}
-    
 
     /**
-     * TileView components
+     * TreeViewItem: a single node in a TreeView hierarchy.
+     * Nest items inside other items to express parent-child relationships.
+     */
+    interface TreeViewItemProps extends PanelProps {
+        /** Depth level for indentation (0 = root, 1 = first child, etc.) */
+        depth?: number | undefined;
+        /** Override indentation pixels per level */
+        indentation?: number | undefined;
+        /** Whether this item's children are currently expanded (for conditional rendering) */
+        expanded?: boolean | undefined;
+    }
+
+    class TreeViewItem extends React.Component<TreeViewItemProps> {
+        native: UE.VerticalBox;
+        children: React.ReactNode;
+    }
+
+    /**
+     * TileView: wrapping grid of equally-sized tile children.
+     * Built on UWrapBox with optional ScrollBox wrapper for scrollable grids.
      */
     interface TileViewProps extends PanelProps {
-
+        /** Width of each tile entry in pixels or CSS length */
+        entryWidth?: number | string | undefined;
+        /** Height of each tile entry in pixels or CSS length */
+        entryHeight?: number | string | undefined;
+        /** Alias for entryWidth */
+        tileWidth?: number | string | undefined;
+        /** Alias for entryHeight */
+        tileHeight?: number | string | undefined;
+        /** Spacing between tiles (applies to both axes) */
+        spacing?: number | string | undefined;
+        /** Horizontal gap between tiles */
+        horizontalSpacing?: number | string | undefined;
+        /** Vertical gap between tiles */
+        verticalSpacing?: number | string | undefined;
+        /** Tile alignment: 'left' | 'center' | 'right' | 'fill' */
+        tileAlignment?: 'left' | 'center' | 'right' | 'fill' | undefined;
+        /** Wrap direction: 'horizontal' (default) or 'vertical' */
+        orientation?: 'horizontal' | 'vertical' | undefined;
+        /** Wrap in a ScrollBox for scrollable tile grids */
+        scrollable?: boolean | undefined;
+        /** Enable scrolling (alias for scrollable) */
+        enableScrolling?: boolean | undefined;
+        /** Scrollbar thickness when scrollable */
+        barThickness?: number | undefined;
+        /** Whether to show scrollbar when scrollable */
+        showScrollbar?: boolean | undefined;
     }
-    class TileView extends React.Component<TileViewProps> {}
 
+    class TileView extends React.Component<TileViewProps> {
+        native: UE.WrapBox;
+        children: React.ReactNode;
+    }
+
+    /** TileViewItem is just a standard panel child within a TileView */
     interface TileViewItemProps extends PanelProps {
-
     }
 
-    class TileViewItem extends React.Component<TileViewItemProps> {}
+    class TileViewItem extends React.Component<TileViewItemProps> {
+        children: React.ReactNode;
+    }
 
     /**
      * Animation components
@@ -700,7 +983,25 @@ declare module "reactorumg" {
     interface TReactorUMG {
         render(coreWidget: any, element: React.ReactElement) : Root;
         init(coreWidget: any) : void;
-        release() : void
+        release() : void;
+
+        /**
+         * Routes a keyboard event from the C++ widget into the React event system.
+         * Call from ReactorUIWidget's OnKeyDown/OnKeyUp overrides.
+         * 
+         * @param eventType "keydown" or "keyup"
+         * @param keyEvent  The native UE.KeyEvent
+         * @param repeat    Whether this is a repeated key press
+         */
+        routeKeyEvent(eventType: string, keyEvent: any, repeat?: boolean): void;
+
+        /**
+         * Routes a Tab key press for focus navigation.
+         * Returns true if focus was moved (caller should consume the event).
+         * 
+         * @param shiftHeld True if Shift+Tab (reverse navigation)
+         */
+        routeTabKey(shiftHeld: boolean): boolean;
     }
 
     var ReactorUMG : TReactorUMG;

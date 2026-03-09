@@ -22,7 +22,9 @@ export class JSXConverter extends ElementConverter {
             "textarea": "TextAreaConverter",
             "select": "SelectConverter",
             "text": "TextConverter",
-            "progress": "ProgressConverter"
+            "progress": "ProgressConverter",
+            "video": "VideoConverter",
+            "audio": "AudioConverter"
         };
 
         const SkipElement = ["option", "style", "script", "link", "meta"];

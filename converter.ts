@@ -2,6 +2,7 @@ import * as UE from 'ue';
 import { findChangedProps, isEmpty, isKeyOfRecord, safeParseFloat } from './misc/utils';
 import { getAllStyles } from './parsers/cssstyle_parser';
 import { parseCursor, parseTransform, parseTransformPivot, parseTranslate, parseVisibility } from './parsers/common_props_parser';
+import { processStyleTransitions } from './parsers/css_transition_engine';
 import * as puerts from 'puerts';
 export abstract class ElementConverter {
     typeName: string;
@@ -112,6 +113,16 @@ export abstract class ElementConverter {
     updateWidget(widget: UE.Widget, oldProps: any, newProps: any) {
         // Find changed properties between oldProps and newProps
         const changedProps = findChangedProps(oldProps, newProps);
+
+        // Check for CSS transition/animation properties and start any needed animations.
+        // This must happen before applying the new values so the engine can capture
+        // the "from" state for interpolation.
+        if (widget) {
+            const oldStyles = getAllStyles(this.typeName, oldProps);
+            const newStyles = getAllStyles(this.typeName, newProps);
+            processStyleTransitions(widget, oldStyles, newStyles);
+        }
+
         // Update common properties
         this.initOrUpdateCommonProperties(widget, changedProps);
         // Update the widget with changed properties
@@ -139,10 +150,15 @@ export abstract class ElementConverter {
     }
 }
 
-const containerKeywords = ['div', 'Grid', 'grid', 'Overlay', 'overlay', 'Canvas', 'canvas', 'form', 'section', 'article', 'main', 'header', 'footer', 'nav', 'aside'];
+const containerKeywords = [
+    'div', 'Grid', 'grid', 'Overlay', 'overlay', 'Canvas', 'canvas',
+    'form', 'section', 'article', 'main', 'header', 'footer', 'nav', 'aside',
+    'ListViewItem', 'TileViewItem'
+];
 const jsxComponentsKeywords = [
     'button', 'input', 'textarea', 'select', 'label', 'span', 'p', 'text',
-    'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'img', 'video', 'audio', 'progress'
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'img', 'video', 'audio', 'progress',
+    'a'
 ];
 
 export function createElementConverter(typeName: string, props: any, outer: any): ElementConverter {

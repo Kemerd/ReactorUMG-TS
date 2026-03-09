@@ -107,13 +107,15 @@ export class StyleTagConverter extends ElementConverter {
             return;
         }
 
-        // Attempt to get viewport size; gracefully degrade if unavailable
+        // Get current viewport size for @media evaluation via UE's WidgetLayoutLibrary
         let viewportSize: { width: number; height: number } | null = null;
         try {
-            // Try to get viewport dimensions from UE subsystem
-            const size = UE.UMGManager.GetViewportSize();
-            if (size && size.X > 0 && size.Y > 0) {
-                viewportSize = { width: size.X, height: size.Y };
+            const world = UE.UMGManager.GetCurrentWorld();
+            if (world) {
+                const size = UE.WidgetLayoutLibrary.GetViewportSize(world);
+                if (size && size.X > 0 && size.Y > 0) {
+                    viewportSize = { width: size.X, height: size.Y };
+                }
             }
         } catch (_e) {
             // Viewport size unavailable; skip media rule evaluation

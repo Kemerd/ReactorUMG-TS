@@ -379,7 +379,7 @@ describe('parser modules', () => {
       expect(rotate.Angle).to.equal(180);
 
       expect(parseVisibility('hidden')).to.equal(UE.ESlateVisibility.Hidden);
-      expect(parseVisibility('visible', 'self-children-invisible')).to.equal(UE.ESlateVisibility.Visible);
+      expect(parseVisibility('visible', 'self-children-invisible')).to.equal(UE.ESlateVisibility.HitTestInvisible);
     });
 
     it('covers additional transform and visibility branches', () => {
@@ -390,7 +390,7 @@ describe('parser modules', () => {
       expect(parseTranslate(undefined as any).Translation.X).to.equal(0);
       expect(parseRotate('bad').Angle).to.equal(0);
       expect(parseVisibility('collapse')).to.equal(UE.ESlateVisibility.Collapsed);
-      expect(parseVisibility('visible', 'self-invisible')).to.equal(UE.ESlateVisibility.Visible);
+      expect(parseVisibility('visible', 'self-invisible')).to.equal(UE.ESlateVisibility.SelfHitTestInvisible);
 
       const complex = parseTransform('matrix(1,2,3,4,5,6) skew(10deg 5deg)');
       expect(complex?.Shear.X).to.not.equal(undefined);

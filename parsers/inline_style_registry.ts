@@ -1,3 +1,5 @@
+import { extractAndRegisterVariables } from './css_variable_registry';
+
 type SelectorKind = 'class' | 'id' | 'type';
 
 interface BucketEntry {
@@ -287,7 +289,6 @@ function parseRuleBlock(css: string, declarationParser: (block: string) => Recor
         if (!declarationMap || Object.keys(declarationMap).length === 0) continue;
 
         // Extract and register CSS custom properties (--*) from the declarations
-        const { extractAndRegisterVariables } = require('./css_variable_registry');
         const selectors = selectorGroup.split(',').map(sel => sel.trim()).filter(Boolean);
 
         for (const selector of selectors) {

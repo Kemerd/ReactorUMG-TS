@@ -154,6 +154,9 @@ class UMGWidget {
     parentFiber: any;
     parentProps: any;
 
+    /** Reference to the parent UMGWidget for event tree traversal */
+    parentUMGWidget: UMGWidget | null;
+
     /**
      * Ordered list of child UMGWidgets managed by this node.
      * Kept in sync with the native UMG widget tree so that insertBefore
@@ -161,11 +164,16 @@ class UMGWidget {
      */
     children: UMGWidget[] = [];
 
+    /** Event node reference for cleanup (managed by event dispatcher) */
+    private _eventNode: any;
+
     constructor(typeName: string, props: any, rootContainer: RootContainer, parentFiber?: any) {
         this.typeName = typeName;
         this.rootContainer = rootContainer;
         this.parentFiber = parentFiber;
         this.parentProps = this.getParentProps();
+        this.parentUMGWidget = null;
+        this._eventNode = null;
         this.props = { ...props, __parentProps: this.parentProps };
         this.init();
     }
@@ -179,16 +187,36 @@ class UMGWidget {
             if (this.native === null && !shouldIgnore) {
                 console.warn("Not supported widget: " + this.typeName);
             }
+
+            // Register with the event system if we have a native widget
+            if (this.native) {
+                this._registerEventNode();
+            }
         } catch(e) {
             console.error("Failed to create widget: " + this.typeName + ", error: " + e);
             console.error(e.stack);
         }
     }
 
+    /**
+     * Registers this widget with the event dispatcher, creating an EventNode
+     * and syncing any event handlers found in the props.
+     */
+    private _registerEventNode() {
+        // Find the parent native widget for event tree linking
+        const parentNative = this.parentUMGWidget?.native ?? null;
+        this._eventNode = createEventNode(this.native, this, parentNative, this.props);
+    }
+
     update(oldProps: any, newProps: any) {
         if (this.native !== null) {
             this.props = { ...newProps, __parentProps: this.parentProps };
             this.converter.updateWidget(this.native, oldProps, newProps);
+
+            // Sync event handlers whenever props change
+            if (this._eventNode) {
+                syncEventHandlers(this._eventNode, newProps);
+            }
         }
     }
 
@@ -207,6 +235,23 @@ class UMGWidget {
         // Track the child in our ordered list
         this.children.push(child);
 
+        // Set parent reference for event tree traversal
+        child.parentUMGWidget = this;
+
+        // If the child's event node was created before it had a parent,
+        // re-link it now that the parent relationship is established
+        if (child._eventNode && this._eventNode) {
+            const dispatcher = EventDispatcher.getInstance();
+            const childNode = dispatcher.getNode(child.native);
+            if (childNode && !childNode.parent) {
+                const parentNode = dispatcher.getNode(this.native);
+                if (parentNode) {
+                    childNode.parent = parentNode;
+                    parentNode.children.add(childNode);
+                }
+            }
+        }
+
         if (this.shouldAppendNative(child)) {
             this.converter.appendChild(this.native, child.native, child.typeName, child.props);
         }
@@ -218,6 +263,9 @@ class UMGWidget {
         if (idx !== -1) {
             this.children.splice(idx, 1);
         }
+
+        // Clear parent reference
+        child.parentUMGWidget = null;
 
         if (this.shouldAppendNative(child)) {
             this.converter.removeChild(this.native, child.native);
@@ -242,6 +290,9 @@ class UMGWidget {
             this.appendChild(child);
             return;
         }
+
+        // Set parent reference for event tree traversal
+        child.parentUMGWidget = this;
 
         // If the child is already one of our children (move case), untrack it first
         const existingIdx = this.children.indexOf(child);
@@ -289,6 +340,12 @@ class UMGWidget {
      * GC can reclaim UObject pointers promptly.
      */
     dispose() {
+        // Unregister from the event system before destroying the widget
+        if (this.native) {
+            destroyEventNode(this.native);
+        }
+        this._eventNode = null;
+
         // Let the converter clean up any non-widget resources (e.g. inline style registrations)
         if (this.converter) {
             this.converter.dispose();
@@ -300,6 +357,9 @@ class UMGWidget {
             child.dispose();
         }
         this.children.length = 0;
+
+        // Clear parent reference
+        this.parentUMGWidget = null;
 
         // Null out native reference so UObject pointer is released
         this.native = null;
@@ -474,5 +534,30 @@ export const ReactorUMG = {
     },
     release: function(root: RootContainer) {
         reconciler.updateContainer(null, root.reconcilerContainer, null, null);
+        // Tear down the event system when the React tree is unmounted
+        disposeEventSystem();
+    },
+
+    /**
+     * Routes a keyboard event from the C++/PuerTS bridge into the React
+     * event system. Call this from the ReactorUIWidget's OnKeyDown/OnKeyUp
+     * overrides (or from a PuerTS bridge callback).
+     * 
+     * @param eventType "keydown" or "keyup"
+     * @param keyEvent  The native UE.KeyEvent
+     * @param repeat    Whether this is a repeated key press
+     */
+    routeKeyEvent: function(eventType: string, keyEvent: UE.KeyEvent, repeat: boolean = false) {
+        routeKeyboardEvent(eventType, keyEvent, repeat);
+    },
+
+    /**
+     * Routes a Tab key press for focus navigation. Returns true if focus was
+     * moved, allowing the caller to consume the event.
+     * 
+     * @param shiftHeld True if Shift+Tab (reverse navigation)
+     */
+    routeTabKey: function(shiftHeld: boolean): boolean {
+        return routeTabNavigation(shiftHeld);
     }
 }

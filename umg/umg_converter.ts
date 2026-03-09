@@ -5,6 +5,14 @@ import { parseWidgetSelfAlignment } from '../parsers/alignment_parser';
 
 export class UMGConverter extends ElementConverter {
     private readonly predefinedWidgets: string[];
+
+    /**
+     * Maps type names to their module file when the converter class lives
+     * in a different file than the type name would suggest.
+     * e.g. 'TreeViewItem' -> 'TreeView' means TreeViewItemConverter lives in TreeView.ts
+     */
+    private readonly moduleOverrides: Record<string, string>;
+
     private proxy: UMGConverter;
     constructor(typeName: string, props: any, outer: any) {
         super(typeName, props, outer);
@@ -30,8 +38,6 @@ export class UMGConverter extends ElementConverter {
             'InvalidationBox',
             'Viewport',
             'UniformGrid',
-
-            // todo@Caleb196x: 待实现的组件
             'ScrollBox',
             'ExpandableArea',
             'CanvasPanel',
@@ -39,23 +45,32 @@ export class UMGConverter extends ElementConverter {
             'RichTextBlock',
             'ListView',
             'TreeView',
+            'TreeViewItem',
             'TileView',
             'WrapBox'
         ]
+
+        // Converter classes that live in a module file different from their type name
+        this.moduleOverrides = {
+            'TreeViewItem': 'TreeView',
+        };
 
         this.proxy = null;
     }
 
     private createProxy(typeName: string): UMGConverter {
-        // create proxy for predefined widgets
+        // Create proxy converter for predefined widget types
         let proxy: UMGConverter;
         if (this.predefinedWidgets.includes(typeName)) {
-            const Module = require(`./predefined/${typeName}`);
+            // Resolve the module file: use override mapping if present, otherwise the type name
+            const moduleName = this.moduleOverrides[typeName] ?? typeName;
+            const Module = require(`./predefined/${moduleName}`);
             if (Module) {
                 const ClassName = `${typeName}Converter`;
                 proxy = new Module[ClassName](this.typeName, this.props, this.outer);
             }
         } else {
+            // Fall through to the generic native widget converter for unrecognized UMG types
             const NativeWidgetModule = require('./native_widget_converter');
             if (NativeWidgetModule) {
                 proxy = new NativeWidgetModule["NativeWidgetConverter"](this.typeName, this.props, this.outer);
