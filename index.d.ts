@@ -833,6 +833,14 @@ declare module "reactorumg" {
         children: React.ReactNode;
     }
 
+    /** ListViewItem is a standard panel child within a ListView */
+    interface ListViewItemProps extends PanelProps {
+    }
+
+    class ListViewItem extends React.Component<ListViewItemProps> {
+        children: React.ReactNode;
+    }
+
     /**
      * TreeView: scrollable container for hierarchical expandable/collapsible content.
      * Express tree structure by nesting TreeViewItem components.
