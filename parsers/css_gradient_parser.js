@@ -181,10 +181,11 @@ function parseColorStop(token) {
     }
     return { color, position };
 }
-/** Quick check for colors that legitimately parse to near-black */
+/** Quick check for colors that legitimately parse to all-zero RGBA values */
 function isBlackish(colorStr) {
     const lower = colorStr.toLowerCase().trim();
     return lower === 'black' || lower === '#000' || lower === '#000000' ||
+        lower === 'transparent' || lower === 'rgba(0,0,0,0)' ||
         lower === 'rgb(0,0,0)' || lower === 'rgba(0,0,0,1)' ||
         lower.startsWith('rgba(0') || lower.startsWith('rgb(0');
 }
