@@ -7,6 +7,7 @@ const cssstyle_parser_1 = require("../../parsers/cssstyle_parser");
 const brush_parser_1 = require("../../parsers/brush_parser");
 const css_color_parser_1 = require("../../parsers/css_color_parser");
 const css_margin_parser_1 = require("../../parsers/css_margin_parser");
+const batch_sync_1 = require("../../perf/batch_sync");
 class BorderConverter extends umg_converter_1.UMGConverter {
     constructor(typeName, props, outer) {
         super(typeName, props, outer);
@@ -119,7 +120,7 @@ class BorderConverter extends umg_converter_1.UMGConverter {
         this.setupProps(border, this.props);
         const bindEvent = this.bindEvent(border, this.props);
         if (bindEvent) {
-            UE.UMGManager.SynchronizeWidgetProperties(border);
+            (0, batch_sync_1.queueWidgetSync)(border);
         }
         return border;
     }
@@ -128,7 +129,7 @@ class BorderConverter extends umg_converter_1.UMGConverter {
         this.setupProps(border, changedProps);
         const bindEvent = this.bindEvent(border, changedProps);
         if (bindEvent) {
-            UE.UMGManager.SynchronizeWidgetProperties(border);
+            (0, batch_sync_1.queueWidgetSync)(border);
         }
     }
 }

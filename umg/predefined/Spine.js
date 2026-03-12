@@ -4,6 +4,7 @@ exports.SpineConverter = void 0;
 const css_color_parser_1 = require("../../parsers/css_color_parser");
 const umg_converter_1 = require("../umg_converter");
 const UE = require("ue");
+const batch_sync_1 = require("../../perf/batch_sync");
 class SpineConverter extends umg_converter_1.UMGConverter {
     constructor(typeName, props, outer) {
         super(typeName, props, outer);
@@ -67,7 +68,7 @@ class SpineConverter extends umg_converter_1.UMGConverter {
         const spine = new UE.SpineWidget(this.outer);
         const propsInit = this.initSpineProps(spine, this.props);
         if (propsInit) {
-            UE.UMGManager.SynchronizeWidgetProperties(spine);
+            (0, batch_sync_1.queueWidgetSync)(spine);
         }
         return spine;
     }
@@ -75,7 +76,7 @@ class SpineConverter extends umg_converter_1.UMGConverter {
         const spine = widget;
         const propsInit = this.initSpineProps(spine, changedProps);
         if (propsInit) {
-            UE.UMGManager.SynchronizeWidgetProperties(spine);
+            (0, batch_sync_1.queueWidgetSync)(spine);
         }
     }
 }

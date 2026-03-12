@@ -8,6 +8,7 @@ const cssstyle_parser_1 = require("../parsers/cssstyle_parser");
 const css_margin_parser_1 = require("../parsers/css_margin_parser");
 const css_length_parser_1 = require("../parsers/css_length_parser");
 const utils_1 = require("../misc/utils");
+const batch_sync_1 = require("../perf/batch_sync");
 class FlexConverter extends container_converter_1.ContainerConverter {
     isRow;
     isReverse;
@@ -225,13 +226,20 @@ class FlexConverter extends container_converter_1.ContainerConverter {
         wrapBox.SetInnerSlotPadding(new UE.Vector2D(paddingX, paddingY));
         // if (!update)
         //     wrapBox.SetHorizontalAlignment(UE.EHorizontalAlignment.HAlign_Fill);
+        // Apply flow direction preference based on direction and reverse settings
         if (this.isRow) {
             wrapBox.FlowDirectionPreference = this.isReverse
                 ? UE.EFlowDirectionPreference.RightToLeft
                 : UE.EFlowDirectionPreference.LeftToRight;
         }
-        // Always sync after mutating wrapBox properties so changes take effect consistently
-        UE.UMGManager.SynchronizeWidgetProperties(wrapBox);
+        else {
+            // For column wrap, reverse affects the cross-axis wrapping direction
+            wrapBox.FlowDirectionPreference = this.isReverse
+                ? UE.EFlowDirectionPreference.RightToLeft
+                : UE.EFlowDirectionPreference.LeftToRight;
+        }
+        // Queued for batched sync – changes take effect when the queue flushes
+        (0, batch_sync_1.queueWidgetSync)(wrapBox);
     }
     createNativeWidget() {
         if (this.isWrap) {
@@ -271,17 +279,42 @@ class FlexConverter extends container_converter_1.ContainerConverter {
             widget.FlowDirectionPreference = this.isReverse
                 ? UE.EFlowDirectionPreference.RightToLeft
                 : UE.EFlowDirectionPreference.LeftToRight;
-            UE.UMGManager.SynchronizeWidgetProperties(widget);
+            (0, batch_sync_1.queueWidgetSync)(widget);
         }
         else if (widget instanceof UE.VerticalBox) {
             // Left intentionally blank: reversing vertical flow requires reordering slots which is handled during append/remove.
         }
     }
     appendChild(parent, child, childTypeName, childProps) {
-        const childStyle = (0, cssstyle_parser_1.getAllStyles)(childTypeName, childProps);
         const panelParent = parent;
         const existingCount = panelParent ? panelParent.GetChildrenCount() : 0;
-        // && this.boxWidgetWhenUsingWrapbox
+        // ------------------------------------------------------------------
+        // Lazy slot creation: when a child mounts with Collapsed visibility,
+        // add it to the panel (preserving tree structure) but skip the
+        // expensive style resolution, alignment parsing, padding conversion,
+        // and flex sizing computation.  The slot keeps its default values
+        // until the child transitions to a visible state, at which point
+        // completeDeferredSlotSetup applies the full configuration.
+        // ------------------------------------------------------------------
+        if (this.isChildCollapsed(child)) {
+            if (parent instanceof UE.WrapBox) {
+                parent.AddChildToWrapBox(child);
+            }
+            else if (parent instanceof UE.HorizontalBox) {
+                parent.AddChildToHorizontalBox(child);
+            }
+            else if (parent instanceof UE.VerticalBox) {
+                parent.AddChildToVerticalBox(child);
+            }
+            this._deferredSlots.set(child, { typeName: childTypeName, props: childProps });
+            return;
+        }
+        const childStyle = (0, cssstyle_parser_1.getAllStyles)(childTypeName, childProps);
+        // Track z-index for this child for future insertion ordering
+        const zIndex = this.extractZIndex(childStyle);
+        if (zIndex !== 0) {
+            this.childZIndices.set(child, zIndex);
+        }
         if (parent instanceof UE.WrapBox) {
             const wrapBox = parent;
             const wrapSlot = wrapBox.AddChildToWrapBox(child);
@@ -289,7 +322,6 @@ class FlexConverter extends container_converter_1.ContainerConverter {
             super.initChildPadding(wrapSlot, childStyle);
             this.applyFlexSizingToSlot(wrapSlot, childStyle);
             return;
-            // parent = this.boxWidgetWhenUsingWrapbox;
         }
         if (parent instanceof UE.HorizontalBox) {
             const horizontalBox = parent;
@@ -307,6 +339,49 @@ class FlexConverter extends container_converter_1.ContainerConverter {
             super.initChildPadding(verticalBoxSlot, childStyle);
             this.applyFlexSizingToSlot(verticalBoxSlot, childStyle);
             this.applyGapToSlot(verticalBoxSlot, existingCount === 0);
+        }
+    }
+    /**
+     * Completes the deferred slot configuration for a child that was
+     * Collapsed at mount time and has now become visible.  Retrieves the
+     * existing slot via child.Slot and applies the full alignment,
+     * padding, sizing, and gap configuration that was skipped earlier.
+     */
+    completeDeferredSlotSetup(parent, child) {
+        const deferred = this._deferredSlots.get(child);
+        if (!deferred)
+            return;
+        this._deferredSlots.delete(child);
+        const childStyle = (0, cssstyle_parser_1.getAllStyles)(deferred.typeName, deferred.props);
+        const slot = child.Slot;
+        if (!slot)
+            return;
+        // Track z-index now that we're applying the full config
+        const zIndex = this.extractZIndex(childStyle);
+        if (zIndex !== 0) {
+            this.childZIndices.set(child, zIndex);
+        }
+        // Determine if this is the first child for gap application
+        const panelParent = parent;
+        const isFirstChild = panelParent && panelParent.GetChildrenCount() > 0
+            && panelParent.GetChildAt(0) === child;
+        // Apply the full slot configuration based on slot type
+        if (slot instanceof UE.WrapBoxSlot) {
+            this.initWrapBoxSlot(slot, childStyle);
+            super.initChildPadding(slot, childStyle);
+            this.applyFlexSizingToSlot(slot, childStyle);
+        }
+        else if (slot instanceof UE.HorizontalBoxSlot) {
+            this.initHorizontalBoxSlot(slot, childStyle);
+            super.initChildPadding(slot, childStyle);
+            this.applyFlexSizingToSlot(slot, childStyle);
+            this.applyGapToSlot(slot, isFirstChild);
+        }
+        else if (slot instanceof UE.VerticalBoxSlot) {
+            this.initVerticalBoxSlot(slot, childStyle);
+            super.initChildPadding(slot, childStyle);
+            this.applyFlexSizingToSlot(slot, childStyle);
+            this.applyGapToSlot(slot, isFirstChild);
         }
     }
 }

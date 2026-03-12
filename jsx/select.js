@@ -7,6 +7,7 @@ const cssstyle_parser_1 = require("../parsers/cssstyle_parser");
 const css_background_parser_1 = require("../parsers/css_background_parser");
 const css_font_parser_1 = require("../parsers/css_font_parser");
 const css_color_parser_1 = require("../parsers/css_color_parser");
+const batch_sync_1 = require("../perf/batch_sync");
 class SelectConverter extends jsx_converter_1.JSXConverter {
     options = [];
     labelToValue = new Map();
@@ -143,7 +144,7 @@ class SelectConverter extends jsx_converter_1.JSXConverter {
         // initial selection and handler
         this.setSelection(combo, this.props);
         this.ensureOnChange(combo, this.props, false);
-        UE.UMGManager.SynchronizeWidgetProperties(combo);
+        (0, batch_sync_1.queueWidgetSync)(combo);
         return combo;
     }
     update(widget, _oldProps, changedProps) {
@@ -159,7 +160,7 @@ class SelectConverter extends jsx_converter_1.JSXConverter {
         }
         this.setSelection(combo, changedProps);
         this.ensureOnChange(combo, changedProps, true);
-        UE.UMGManager.SynchronizeWidgetProperties(combo);
+        (0, batch_sync_1.queueWidgetSync)(combo);
     }
     appendChild(parent, _child, childTypeName, childProps) {
         const combo = parent;

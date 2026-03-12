@@ -4,6 +4,7 @@ exports.ThrobberConverter = void 0;
 const UE = require("ue");
 const umg_converter_1 = require("../umg_converter");
 const brush_parser_1 = require("../../parsers/brush_parser");
+const batch_sync_1 = require("../../perf/batch_sync");
 class ThrobberConverter extends umg_converter_1.UMGConverter {
     constructor(typeName, props, outer) {
         super(typeName, props, outer);
@@ -32,7 +33,7 @@ class ThrobberConverter extends umg_converter_1.UMGConverter {
         const throbber = new UE.Throbber(this.outer);
         const propsInit = this.initProps(throbber, this.props);
         if (propsInit) {
-            UE.UMGManager.SynchronizeWidgetProperties(throbber);
+            (0, batch_sync_1.queueWidgetSync)(throbber);
         }
         return throbber;
     }
@@ -40,7 +41,7 @@ class ThrobberConverter extends umg_converter_1.UMGConverter {
         const throbber = widget;
         const propsChanged = this.initProps(throbber, changedProps);
         if (propsChanged) {
-            UE.UMGManager.SynchronizeWidgetProperties(throbber);
+            (0, batch_sync_1.queueWidgetSync)(throbber);
         }
     }
 }

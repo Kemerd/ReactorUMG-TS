@@ -4,6 +4,8 @@ exports.NativeWidgetConverter = void 0;
 const umg_converter_1 = require("./umg_converter");
 const UE = require("ue");
 const puerts = require("puerts");
+const events_1 = require("../events");
+const batch_sync_1 = require("../perf/batch_sync");
 class NativeWidgetConverter extends umg_converter_1.UMGConverter {
     callbackRecords;
     constructor(typeName, props, outer) {
@@ -53,6 +55,10 @@ class NativeWidgetConverter extends umg_converter_1.UMGConverter {
         }
         let mergeProps = {};
         for (const key in this.props) {
+            // Skip React event handler props (onClick, onKeyDownCapture, etc.)
+            // These are handled by the ReactorUMG event dispatcher, not UE delegates.
+            if (events_1.ALL_EVENT_PROPS_WITH_CAPTURE.has(key))
+                continue;
             let val = this.props[key];
             if (typeof val === 'function') {
                 this.bindEvents(widget, key, val);
@@ -67,6 +73,9 @@ class NativeWidgetConverter extends umg_converter_1.UMGConverter {
     update(widget, oldProps, changedProps) {
         let propsChanged = {};
         for (const key in changedProps) {
+            // Skip React event handler props - managed by event dispatcher
+            if (events_1.ALL_EVENT_PROPS_WITH_CAPTURE.has(key))
+                continue;
             let val = changedProps[key];
             if (key !== 'children') {
                 if (typeof val === 'function') {
@@ -80,7 +89,7 @@ class NativeWidgetConverter extends umg_converter_1.UMGConverter {
         }
         if (propsChanged) {
             puerts.merge(widget, propsChanged);
-            UE.UMGManager.SynchronizeWidgetProperties(widget);
+            (0, batch_sync_1.queueWidgetSync)(widget);
         }
     }
     appendChild(parent, child, childTypeName, childProps) {

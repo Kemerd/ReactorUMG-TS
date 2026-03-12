@@ -7,6 +7,7 @@ const cssstyle_parser_1 = require("../../parsers/cssstyle_parser");
 const css_margin_parser_1 = require("../../parsers/css_margin_parser");
 const brush_parser_1 = require("../../parsers/brush_parser");
 const css_color_parser_1 = require("../../parsers/css_color_parser");
+const batch_sync_1 = require("../../perf/batch_sync");
 class ExpandableAreaConverter extends umg_converter_1.UMGConverter {
     headerWidget;
     areaWidget;
@@ -128,7 +129,7 @@ class ExpandableAreaConverter extends umg_converter_1.UMGConverter {
         const propsUpdated = this.applyProps(area, this.props);
         const contentUpdated = this.applyContent(area, this.props, true);
         if (propsUpdated || contentUpdated) {
-            UE.UMGManager.SynchronizeWidgetProperties(area);
+            (0, batch_sync_1.queueWidgetSync)(area);
         }
         return area;
     }
@@ -137,7 +138,7 @@ class ExpandableAreaConverter extends umg_converter_1.UMGConverter {
         const propsUpdated = this.applyProps(area, changedProps);
         const contentUpdated = this.applyContent(area, changedProps, false);
         if (propsUpdated || contentUpdated) {
-            UE.UMGManager.SynchronizeWidgetProperties(area);
+            (0, batch_sync_1.queueWidgetSync)(area);
         }
     }
     appendChild(parent, child) {

@@ -437,7 +437,8 @@ class GridConverter extends container_converter_1.ContainerConverter {
         const bottom = (rowStart + rowSpan) < this.totalRows ? this.rowGap / 2 : 0;
         const left = colStart > 0 ? this.columnGap / 2 : 0;
         const right = (colStart + colSpan) < this.totalColumns ? this.columnGap / 2 : 0;
-        slot.SetPadding(new UE.Margin(top, right, bottom, left));
+        // UE.Margin constructor order: Left, Top, Right, Bottom
+        slot.SetPadding(new UE.Margin(left, top, right, bottom));
     }
     reapplyGapToAllSlots(grid) {
         const count = grid.GetChildrenCount();
@@ -501,8 +502,27 @@ class GridConverter extends container_converter_1.ContainerConverter {
     }
     appendChild(parent, child, childTypeName, childProps) {
         const gridPanel = parent;
-        let gridSlot = gridPanel.AddChildToGrid(child);
+        const gridSlot = gridPanel.AddChildToGrid(child);
+        // Lazy slot: defer grid position/alignment/padding for collapsed children
+        if (this.isChildCollapsed(child)) {
+            this._deferredSlots.set(child, { typeName: childTypeName, props: childProps });
+            return;
+        }
         this.initGridPanelSlot(gridSlot, childTypeName, childProps);
+    }
+    /**
+     * Completes deferred grid slot configuration for a child that
+     * was Collapsed at mount time and has now become visible.
+     */
+    completeDeferredSlotSetup(parent, child) {
+        const deferred = this._deferredSlots.get(child);
+        if (!deferred)
+            return;
+        this._deferredSlots.delete(child);
+        const slot = child.Slot;
+        if (!slot)
+            return;
+        this.initGridPanelSlot(slot, deferred.typeName, deferred.props);
     }
 }
 exports.GridConverter = GridConverter;

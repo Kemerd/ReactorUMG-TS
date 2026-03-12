@@ -7,6 +7,12 @@ const cssstyle_parser_1 = require("../parsers/cssstyle_parser");
 const alignment_parser_1 = require("../parsers/alignment_parser");
 class UMGConverter extends converter_1.ElementConverter {
     predefinedWidgets;
+    /**
+     * Maps type names to their module file when the converter class lives
+     * in a different file than the type name would suggest.
+     * e.g. 'TreeViewItem' -> 'TreeView' means TreeViewItemConverter lives in TreeView.ts
+     */
+    moduleOverrides;
     proxy;
     constructor(typeName, props, outer) {
         super(typeName, props, outer);
@@ -31,7 +37,6 @@ class UMGConverter extends converter_1.ElementConverter {
             'InvalidationBox',
             'Viewport',
             'UniformGrid',
-            // todo@Caleb196x: 待实现的组件
             'ScrollBox',
             'ExpandableArea',
             'CanvasPanel',
@@ -39,22 +44,41 @@ class UMGConverter extends converter_1.ElementConverter {
             'RichTextBlock',
             'ListView',
             'TreeView',
+            'TreeViewItem',
             'TileView',
             'WrapBox'
         ];
+        // Converter classes that live in a module file different from their type name
+        this.moduleOverrides = {
+            'TreeViewItem': 'TreeView',
+        };
         this.proxy = null;
     }
+    /**
+     * Eagerly initializes the internal proxy converter without creating
+     * a native widget.  Required when a recycled widget is used and
+     * createNativeWidget is skipped — the proxy must exist so that
+     * update() can delegate type-specific property application.
+     */
+    ensureReady() {
+        if (!this.proxy) {
+            this.proxy = this.createProxy(this.typeName);
+        }
+    }
     createProxy(typeName) {
-        // create proxy for predefined widgets
+        // Create proxy converter for predefined widget types
         let proxy;
         if (this.predefinedWidgets.includes(typeName)) {
-            const Module = require(`./predefined/${typeName}`);
+            // Resolve the module file: use override mapping if present, otherwise the type name
+            const moduleName = this.moduleOverrides[typeName] ?? typeName;
+            const Module = require(`./predefined/${moduleName}`);
             if (Module) {
                 const ClassName = `${typeName}Converter`;
                 proxy = new Module[ClassName](this.typeName, this.props, this.outer);
             }
         }
         else {
+            // Fall through to the generic native widget converter for unrecognized UMG types
             const NativeWidgetModule = require('./native_widget_converter');
             if (NativeWidgetModule) {
                 proxy = new NativeWidgetModule["NativeWidgetConverter"](this.typeName, this.props, this.outer);
@@ -100,9 +124,7 @@ class UMGConverter extends converter_1.ElementConverter {
      * React控件定义到UWidget的转换规则：
      */
     createNativeWidget() {
-        if (!this.proxy) {
-            this.proxy = this.createProxy(this.typeName);
-        }
+        this.ensureReady();
         if (this.proxy) {
             return this.proxy.createNativeWidget();
         }
@@ -114,15 +136,34 @@ class UMGConverter extends converter_1.ElementConverter {
         }
     }
     appendChild(parent, child, childTypeName, childProps) {
+        // Dispatch to the predefined converter so it can apply custom child
+        // management (e.g. ListView spacing, TreeView indentation, TileView
+        // tile sizing, UniformGrid row/column slots, ExpandableArea header/body).
+        // If the predefined converter doesn't override appendChild, it falls
+        // through to this same default via the UMGConverter base class.
+        if (this.proxy) {
+            this.proxy.appendChild(parent, child, childTypeName, childProps);
+            return;
+        }
         if (parent instanceof UE.PanelWidget) {
             const slot = parent.AddChild(child);
             this.initPanelChildSlot(slot, childTypeName, childProps);
         }
     }
     removeChild(parent, child) {
+        if (this.proxy) {
+            this.proxy.removeChild(parent, child);
+            return;
+        }
         if (parent instanceof UE.PanelWidget) {
             parent.RemoveChild(child);
         }
+    }
+    dispose() {
+        if (this.proxy) {
+            this.proxy.dispose();
+        }
+        super.dispose();
     }
 }
 exports.UMGConverter = UMGConverter;

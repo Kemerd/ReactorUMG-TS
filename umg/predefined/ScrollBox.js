@@ -5,6 +5,7 @@ const UE = require("ue");
 const umg_converter_1 = require("../umg_converter");
 const css_margin_parser_1 = require("../../parsers/css_margin_parser");
 const brush_parser_1 = require("../../parsers/brush_parser");
+const batch_sync_1 = require("../../perf/batch_sync");
 class ScrollBoxConverter extends umg_converter_1.UMGConverter {
     constructor(typeName, props, outer) {
         super(typeName, props, outer);
@@ -133,7 +134,7 @@ class ScrollBoxConverter extends umg_converter_1.UMGConverter {
         const scrollBox = new UE.ScrollBox(this.outer);
         const propsInit = this.initProps(scrollBox, this.props);
         if (propsInit) {
-            UE.UMGManager.SynchronizeWidgetProperties(scrollBox);
+            (0, batch_sync_1.queueWidgetSync)(scrollBox);
         }
         return scrollBox;
     }
@@ -141,7 +142,7 @@ class ScrollBoxConverter extends umg_converter_1.UMGConverter {
         const scrollBox = widget;
         const propsInit = this.initProps(scrollBox, changedProps);
         if (propsInit) {
-            UE.UMGManager.SynchronizeWidgetProperties(scrollBox);
+            (0, batch_sync_1.queueWidgetSync)(scrollBox);
         }
     }
 }

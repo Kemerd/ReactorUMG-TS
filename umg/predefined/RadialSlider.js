@@ -4,6 +4,7 @@ exports.RadialSliderConverter = void 0;
 const UE = require("ue");
 const Slider_1 = require("./Slider");
 const css_color_parser_1 = require("../../parsers/css_color_parser");
+const batch_sync_1 = require("../../perf/batch_sync");
 class RadialSliderConverter extends Slider_1.SliderConverter {
     constructor(typeName, props, outer) {
         super(typeName, props, outer);
@@ -40,7 +41,7 @@ class RadialSliderConverter extends Slider_1.SliderConverter {
         const radialSlider = new UE.RadialSlider(this.outer);
         const propsInit = this.initRadialSliderProps(radialSlider, this.props);
         if (propsInit) {
-            UE.UMGManager.SynchronizeWidgetProperties(radialSlider);
+            (0, batch_sync_1.queueWidgetSync)(radialSlider);
         }
         return radialSlider;
     }
@@ -48,7 +49,7 @@ class RadialSliderConverter extends Slider_1.SliderConverter {
         const radialSlider = widget;
         const propsChanged = this.initRadialSliderProps(radialSlider, changedProps);
         if (propsChanged) {
-            UE.UMGManager.SynchronizeWidgetProperties(radialSlider);
+            (0, batch_sync_1.queueWidgetSync)(radialSlider);
         }
     }
 }

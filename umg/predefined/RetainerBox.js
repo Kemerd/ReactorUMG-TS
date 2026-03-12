@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.RetainerBoxConverter = void 0;
 const UE = require("ue");
 const umg_converter_1 = require("../umg_converter");
+const batch_sync_1 = require("../../perf/batch_sync");
 class RetainerBoxConverter extends umg_converter_1.UMGConverter {
     constructor(typeName, props, outer) {
         super(typeName, props, outer);
@@ -40,7 +41,7 @@ class RetainerBoxConverter extends umg_converter_1.UMGConverter {
         const retainerBox = new UE.RetainerBox(this.outer);
         const propsInit = this.initRetainerBoxProps(retainerBox, this.props);
         if (propsInit) {
-            UE.UMGManager.SynchronizeWidgetProperties(retainerBox);
+            (0, batch_sync_1.queueWidgetSync)(retainerBox);
         }
         return retainerBox;
     }
@@ -48,7 +49,7 @@ class RetainerBoxConverter extends umg_converter_1.UMGConverter {
         const retainerBox = widget;
         const propsChanged = this.initRetainerBoxProps(retainerBox, changedProps);
         if (propsChanged) {
-            UE.UMGManager.SynchronizeWidgetProperties(retainerBox);
+            (0, batch_sync_1.queueWidgetSync)(retainerBox);
         }
     }
 }

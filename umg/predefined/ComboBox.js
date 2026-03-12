@@ -6,6 +6,7 @@ const umg_converter_1 = require("../umg_converter");
 const css_margin_parser_1 = require("../../parsers/css_margin_parser");
 const brush_parser_1 = require("../../parsers/brush_parser");
 const css_color_parser_1 = require("../../parsers/css_color_parser");
+const batch_sync_1 = require("../../perf/batch_sync");
 class ComboBoxConverter extends umg_converter_1.UMGConverter {
     constructor(typeName, props, outer) {
         super(typeName, props, outer);
@@ -163,7 +164,7 @@ class ComboBoxConverter extends umg_converter_1.UMGConverter {
         const comboBox = new UE.ComboBoxString(this.outer);
         const propsInit = this.setupProps(comboBox, this.props);
         if (propsInit) {
-            UE.UMGManager.SynchronizeWidgetProperties(comboBox);
+            (0, batch_sync_1.queueWidgetSync)(comboBox);
         }
         return comboBox;
     }
@@ -171,7 +172,7 @@ class ComboBoxConverter extends umg_converter_1.UMGConverter {
         const comboBox = widget;
         const propsChanged = this.setupProps(comboBox, changedProps);
         if (propsChanged) {
-            UE.UMGManager.SynchronizeWidgetProperties(comboBox);
+            (0, batch_sync_1.queueWidgetSync)(comboBox);
         }
     }
 }

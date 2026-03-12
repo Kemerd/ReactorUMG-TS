@@ -5,6 +5,7 @@ const UE = require("ue");
 const umg_converter_1 = require("../umg_converter");
 const brush_parser_1 = require("../../parsers/brush_parser");
 const css_color_parser_1 = require("../../parsers/css_color_parser");
+const batch_sync_1 = require("../../perf/batch_sync");
 class ProgressBarConverter extends umg_converter_1.UMGConverter {
     constructor(typeName, props, outer) {
         super(typeName, props, outer);
@@ -94,7 +95,7 @@ class ProgressBarConverter extends umg_converter_1.UMGConverter {
         const progressBar = new UE.ProgressBar(this.outer);
         const propsInit = this.initProps(progressBar, this.props);
         if (propsInit) {
-            UE.UMGManager.SynchronizeWidgetProperties(progressBar);
+            (0, batch_sync_1.queueWidgetSync)(progressBar);
         }
         return progressBar;
     }
@@ -102,7 +103,7 @@ class ProgressBarConverter extends umg_converter_1.UMGConverter {
         const progressBar = widget;
         const propsChanged = this.initProps(progressBar, changedProps);
         if (propsChanged) {
-            UE.UMGManager.SynchronizeWidgetProperties(progressBar);
+            (0, batch_sync_1.queueWidgetSync)(progressBar);
         }
     }
 }

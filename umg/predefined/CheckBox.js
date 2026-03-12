@@ -7,6 +7,7 @@ const brush_parser_1 = require("../../parsers/brush_parser");
 const css_margin_parser_1 = require("../../parsers/css_margin_parser");
 const css_color_parser_1 = require("../../parsers/css_color_parser");
 const cssstyle_parser_1 = require("../../parsers/cssstyle_parser");
+const batch_sync_1 = require("../../perf/batch_sync");
 class CheckBoxConverter extends umg_converter_1.UMGConverter {
     constructor(typeName, props, outer) {
         super(typeName, props, outer);
@@ -94,7 +95,7 @@ class CheckBoxConverter extends umg_converter_1.UMGConverter {
         const checkBox = new UE.CheckBox(this.outer);
         const propsInit = this.setupProps(checkBox, this.props);
         if (propsInit) {
-            UE.UMGManager.SynchronizeWidgetProperties(checkBox);
+            (0, batch_sync_1.queueWidgetSync)(checkBox);
         }
         return checkBox;
     }
@@ -102,7 +103,7 @@ class CheckBoxConverter extends umg_converter_1.UMGConverter {
         const checkBox = widget;
         const propsChanged = this.setupProps(checkBox, changedProps);
         if (propsChanged) {
-            UE.UMGManager.SynchronizeWidgetProperties(checkBox);
+            (0, batch_sync_1.queueWidgetSync)(checkBox);
         }
     }
 }

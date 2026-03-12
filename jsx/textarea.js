@@ -6,6 +6,7 @@ const jsx_converter_1 = require("./jsx_converter");
 const cssstyle_parser_1 = require("../parsers/cssstyle_parser");
 const css_font_parser_1 = require("../parsers/css_font_parser");
 const css_color_parser_1 = require("../parsers/css_color_parser");
+const batch_sync_1 = require("../perf/batch_sync");
 class TextAreaConverter extends jsx_converter_1.JSXConverter {
     constructor(typeName, props, outer) {
         super(typeName, props, outer);
@@ -125,7 +126,7 @@ class TextAreaConverter extends jsx_converter_1.JSXConverter {
         const textArea = new UE.MultiLineEditableText(this.outer);
         this.initTextAreaProps(textArea, this.props);
         this.applyStyles(textArea, this.props);
-        UE.UMGManager.SynchronizeWidgetProperties(textArea);
+        (0, batch_sync_1.queueWidgetSync)(textArea);
         return textArea;
     }
     update(widget, oldProps, changedProps) {
@@ -134,7 +135,7 @@ class TextAreaConverter extends jsx_converter_1.JSXConverter {
         const styleChanged = !!changedProps && (('style' in changedProps) || ('className' in changedProps) || ('id' in changedProps));
         if (propsChanged || styleChanged) {
             this.applyStyles(textArea, changedProps);
-            UE.UMGManager.SynchronizeWidgetProperties(textArea);
+            (0, batch_sync_1.queueWidgetSync)(textArea);
         }
     }
 }

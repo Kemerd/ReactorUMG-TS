@@ -6,8 +6,10 @@ const css_color_parser_1 = require("../parsers/css_color_parser");
 const cssstyle_parser_1 = require("../parsers/cssstyle_parser");
 const jsx_converter_1 = require("./jsx_converter");
 const css_background_parser_1 = require("../parsers/css_background_parser");
+const css_gradient_parser_1 = require("../parsers/css_gradient_parser");
 const brush_parser_1 = require("../parsers/brush_parser");
 const css_margin_parser_1 = require("../parsers/css_margin_parser");
+const batch_sync_1 = require("../perf/batch_sync");
 class ButtonConverter extends jsx_converter_1.JSXConverter {
     eventCallbacks = {};
     eventNameMapping = {
@@ -88,9 +90,17 @@ class ButtonConverter extends jsx_converter_1.JSXConverter {
             backgroundPosition: props?.backgroundPosition ?? style?.backgroundPosition
         };
         const parsedBackground = (0, css_background_parser_1.parseBackgroundProps)(backgroundSource);
-        const normalBrush = parsedBackground?.image ?? button.WidgetStyle.Normal;
-        if (parsedBackground?.image) {
-            button.WidgetStyle.Normal = parsedBackground.image;
+        // Resolve the background brush: check gradient first, then image, then fallback
+        let resolvedBrush = null;
+        if (parsedBackground?.gradient) {
+            resolvedBrush = (0, css_gradient_parser_1.createGradientBrush)(parsedBackground.gradient, this.outer);
+        }
+        if (!resolvedBrush && parsedBackground?.image) {
+            resolvedBrush = parsedBackground.image;
+        }
+        const normalBrush = resolvedBrush ?? button.WidgetStyle.Normal;
+        if (resolvedBrush) {
+            button.WidgetStyle.Normal = resolvedBrush;
         }
         if (parsedBackground?.color) {
             button.BackgroundColor = parsedBackground.color;
@@ -337,7 +347,7 @@ class ButtonConverter extends jsx_converter_1.JSXConverter {
         this.initButtonDefaultProps(button);
         this.setButtonStyle(button, props);
         this.setButtonEventHandlers(button, props ?? this.props);
-        UE.UMGManager.SynchronizeWidgetProperties(button);
+        (0, batch_sync_1.queueWidgetSync)(button);
     }
     createNativeWidget() {
         const button = new UE.Button(this.outer);
@@ -348,7 +358,7 @@ class ButtonConverter extends jsx_converter_1.JSXConverter {
         const button = widget;
         this.setButtonStyle(button, changedProps);
         this.setButtonEventHandlers(button, changedProps);
-        UE.UMGManager.SynchronizeWidgetProperties(button);
+        (0, batch_sync_1.queueWidgetSync)(button);
     }
 }
 exports.ButtonConverter = ButtonConverter;

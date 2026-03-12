@@ -7,6 +7,7 @@ const cssstyle_parser_1 = require("../parsers/cssstyle_parser");
 const css_background_parser_1 = require("../parsers/css_background_parser");
 const css_color_parser_1 = require("../parsers/css_color_parser");
 const utils_1 = require("../misc/utils");
+const batch_sync_1 = require("../perf/batch_sync");
 const DEFAULT_MAX = 100;
 const DEFAULT_MIN = 0;
 const DOUBLE_CLICK_THRESHOLD_MS = 320;
@@ -302,8 +303,8 @@ class ProgressConverter extends jsx_converter_1.JSXConverter {
         if (this.props?.autoFocus) {
             setTimeout(() => this.handleFocus("auto"), 0);
         }
-        UE.UMGManager.SynchronizeWidgetProperties(this.progressBar);
-        UE.UMGManager.SynchronizeWidgetProperties(this.button);
+        (0, batch_sync_1.queueWidgetSync)(this.progressBar);
+        (0, batch_sync_1.queueWidgetSync)(this.button);
         return this.button;
     }
     update(widget, oldProps, changedProps) {
@@ -317,8 +318,8 @@ class ProgressConverter extends jsx_converter_1.JSXConverter {
         this.applyProgressStyles(this.progressBar);
         this.applyValueState(nextProps);
         this.updateInteractivity(nextProps);
-        UE.UMGManager.SynchronizeWidgetProperties(this.progressBar);
-        UE.UMGManager.SynchronizeWidgetProperties(button);
+        (0, batch_sync_1.queueWidgetSync)(this.progressBar);
+        (0, batch_sync_1.queueWidgetSync)(button);
     }
     removeChild(parent, child) {
         super.removeChild(parent, child);

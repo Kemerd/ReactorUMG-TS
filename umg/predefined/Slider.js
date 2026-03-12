@@ -5,6 +5,7 @@ const UE = require("ue");
 const umg_converter_1 = require("../umg_converter");
 const css_color_parser_1 = require("../../parsers/css_color_parser");
 const brush_parser_1 = require("../../parsers/brush_parser");
+const batch_sync_1 = require("../../perf/batch_sync");
 class SliderConverter extends umg_converter_1.UMGConverter {
     constructor(typeName, props, outer) {
         super(typeName, props, outer);
@@ -117,7 +118,7 @@ class SliderConverter extends umg_converter_1.UMGConverter {
         const slider = new UE.Slider(this.outer);
         const propsInit = this.initProps(slider, this.props);
         if (propsInit) {
-            UE.UMGManager.SynchronizeWidgetProperties(slider);
+            (0, batch_sync_1.queueWidgetSync)(slider);
         }
         return slider;
     }
@@ -125,7 +126,7 @@ class SliderConverter extends umg_converter_1.UMGConverter {
         const slider = widget;
         const propsChanged = this.initProps(slider, changedProps);
         if (propsChanged) {
-            UE.UMGManager.SynchronizeWidgetProperties(slider);
+            (0, batch_sync_1.queueWidgetSync)(slider);
         }
     }
 }

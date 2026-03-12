@@ -6,6 +6,7 @@ const umg_converter_1 = require("../umg_converter");
 const css_margin_parser_1 = require("../../parsers/css_margin_parser");
 const cssstyle_parser_1 = require("../../parsers/cssstyle_parser");
 const alignment_parser_1 = require("../../parsers/alignment_parser");
+const batch_sync_1 = require("../../perf/batch_sync");
 class UniformGridConverter extends umg_converter_1.UMGConverter {
     constructor(typeName, props, outer) {
         super(typeName, props, outer);
@@ -47,7 +48,7 @@ class UniformGridConverter extends umg_converter_1.UMGConverter {
         const grid = new UE.UniformGridPanel(this.outer);
         const propsInit = this.initProps(grid, this.props);
         if (propsInit) {
-            UE.UMGManager.SynchronizeWidgetProperties(grid);
+            (0, batch_sync_1.queueWidgetSync)(grid);
         }
         return grid;
     }
@@ -55,7 +56,7 @@ class UniformGridConverter extends umg_converter_1.UMGConverter {
         const grid = widget;
         const propsInit = this.initProps(grid, changedProps);
         if (propsInit) {
-            UE.UMGManager.SynchronizeWidgetProperties(grid);
+            (0, batch_sync_1.queueWidgetSync)(grid);
         }
     }
     appendChild(parent, child, childTypeName, childProps) {

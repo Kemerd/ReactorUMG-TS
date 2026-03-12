@@ -10,6 +10,7 @@ const UE = require("ue");
 const image_loader_1 = require("../misc/image_loader");
 const css_color_parser_1 = require("./css_color_parser");
 const css_length_parser_1 = require("./css_length_parser");
+const css_gradient_parser_1 = require("./css_gradient_parser");
 function parseBackgroundLayer(layer) {
     const REPEAT_KEYWORDS = {
         'repeat-x': 1, 'repeat-y': 1, 'repeat': 1,
@@ -320,6 +321,11 @@ function parseBackgroundImage(backgroundImage, backgroundSize) {
         brush.ResourceObject = backgroundImage;
         return brush;
     }
+    // Gradient values are handled separately via parseGradient() + createGradientBrush().
+    // Return null here so the caller knows to check for gradient data instead.
+    if ((0, css_gradient_parser_1.isGradientValue)(backgroundImage)) {
+        return undefined;
+    }
     let imagePath = backgroundImage;
     // Handle template literal with imported texture
     const templateMatch = backgroundImage.match(/`url\(\${(.*?)}\)`/);
@@ -432,13 +438,23 @@ function parseBackground(background) {
     return result;
 }
 function parseBackgroundProps(style) {
-    // image转换成brush image
-    // repeat转换成image中的tiling模式
-    // position转换成alignment和padding
+    // image -> brush image
+    // repeat -> image tiling mode
+    // position -> alignment and padding
+    // gradient -> GradientData for deferred texture creation via C++
     let result = {};
     const background = style?.background;
     if (background) {
-        result = parseBackground(background);
+        // Check if the shorthand `background` value itself is a gradient
+        if (typeof background === 'string' && (0, css_gradient_parser_1.isGradientValue)(background)) {
+            const gradient = (0, css_gradient_parser_1.parseGradient)(background);
+            if (gradient) {
+                result['gradient'] = gradient;
+            }
+        }
+        else {
+            result = parseBackground(background);
+        }
     }
     const backgroundColor = style?.backgroundColor;
     if (backgroundColor) {
@@ -447,7 +463,16 @@ function parseBackgroundProps(style) {
     const backgroundImage = style?.backgroundImage;
     const backgroundSize = style?.backgroundSize;
     if (backgroundImage) {
-        result['image'] = parseBackgroundImage(backgroundImage, backgroundSize);
+        // Detect gradient syntax in backgroundImage property
+        if (typeof backgroundImage === 'string' && (0, css_gradient_parser_1.isGradientValue)(backgroundImage)) {
+            const gradient = (0, css_gradient_parser_1.parseGradient)(backgroundImage);
+            if (gradient) {
+                result['gradient'] = gradient;
+            }
+        }
+        else {
+            result['image'] = parseBackgroundImage(backgroundImage, backgroundSize);
+        }
     }
     const backgroundRepeat = style?.backgroundRepeat;
     if (backgroundRepeat && result['image']) {

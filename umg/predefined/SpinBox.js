@@ -6,6 +6,7 @@ const umg_converter_1 = require("../umg_converter");
 const css_color_parser_1 = require("../../parsers/css_color_parser");
 const brush_parser_1 = require("../../parsers/brush_parser");
 const css_margin_parser_1 = require("../../parsers/css_margin_parser");
+const batch_sync_1 = require("../../perf/batch_sync");
 class SpinBoxConverter extends umg_converter_1.UMGConverter {
     constructor(typeName, props, outer) {
         super(typeName, props, outer);
@@ -124,7 +125,7 @@ class SpinBoxConverter extends umg_converter_1.UMGConverter {
         const spinBox = new UE.SpinBox(this.outer);
         const propsInit = this.initSpinBoxProps(spinBox, this.props);
         if (propsInit) {
-            UE.UMGManager.SynchronizeWidgetProperties(spinBox);
+            (0, batch_sync_1.queueWidgetSync)(spinBox);
         }
         return spinBox;
     }
@@ -132,7 +133,7 @@ class SpinBoxConverter extends umg_converter_1.UMGConverter {
         const spinBox = widget;
         const propsInit = this.initSpinBoxProps(spinBox, changedProps);
         if (propsInit) {
-            UE.UMGManager.SynchronizeWidgetProperties(spinBox);
+            (0, batch_sync_1.queueWidgetSync)(spinBox);
         }
     }
 }

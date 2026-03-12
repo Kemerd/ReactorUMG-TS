@@ -20,7 +20,8 @@ class UniformGridConverter extends container_converter_1.ContainerConverter {
         if (cellPadding) {
             let padding = null;
             if (typeof cellPadding === 'object') {
-                padding = new UE.Margin(cellPadding.top, cellPadding.right, cellPadding.bottom, cellPadding.left);
+                // UE.Margin constructor order: Left, Top, Right, Bottom
+                padding = new UE.Margin(cellPadding.left, cellPadding.top, cellPadding.right, cellPadding.bottom);
             }
             else if (typeof cellPadding === 'string') {
                 padding = (0, css_margin_parser_1.convertToUEMargin)(props?.style, cellPadding, '', '', '', '');
@@ -69,7 +70,26 @@ class UniformGridConverter extends container_converter_1.ContainerConverter {
     appendChild(parent, child, childTypeName, childProps) {
         const uniformGrid = parent;
         const slot = uniformGrid.AddChildToUniformGrid(child);
+        // Lazy slot: defer alignment and row/column setup for collapsed children
+        if (this.isChildCollapsed(child)) {
+            this._deferredSlots.set(child, { typeName: childTypeName, props: childProps });
+            return;
+        }
         this.setupUniformGridSlot(slot, childTypeName, childProps);
+    }
+    /**
+     * Completes deferred uniform grid slot configuration for a child
+     * that was Collapsed at mount time and has now become visible.
+     */
+    completeDeferredSlotSetup(parent, child) {
+        const deferred = this._deferredSlots.get(child);
+        if (!deferred)
+            return;
+        this._deferredSlots.delete(child);
+        const slot = child.Slot;
+        if (!slot)
+            return;
+        this.setupUniformGridSlot(slot, deferred.typeName, deferred.props);
     }
 }
 exports.UniformGridConverter = UniformGridConverter;

@@ -5,6 +5,7 @@ const alignment_parser_1 = require("../parsers/alignment_parser");
 const cssstyle_parser_1 = require("../parsers/cssstyle_parser");
 const css_length_parser_1 = require("../parsers/css_length_parser");
 const container_converter_1 = require("./container_converter");
+const batch_sync_1 = require("../perf/batch_sync");
 const UE = require("ue");
 class OverlayConverter extends container_converter_1.ContainerConverter {
     absoluteChildren;
@@ -30,10 +31,22 @@ class OverlayConverter extends container_converter_1.ContainerConverter {
     }
     appendChild(parent, child, childTypeName, childProps) {
         const overlay = parent;
+        // Lazy slot: add collapsed children to the overlay but skip
+        // the style resolution, alignment, and absolute layout work.
+        if (this.isChildCollapsed(child)) {
+            overlay.AddChildToOverlay(child);
+            this._deferredSlots.set(child, { typeName: childTypeName, props: childProps });
+            return;
+        }
         const overlaySlot = overlay.AddChildToOverlay(child);
         const style = (0, cssstyle_parser_1.getAllStyles)(childTypeName, childProps);
         if (!overlaySlot) {
             return;
+        }
+        // Track z-index for render ordering in the overlay
+        const zIndex = this.extractZIndex(style);
+        if (zIndex !== 0) {
+            this.childZIndices.set(child, zIndex);
         }
         const alignment = (0, alignment_parser_1.parseWidgetSelfAlignment)(style);
         overlaySlot.SetHorizontalAlignment(alignment.horizontal);
@@ -66,8 +79,63 @@ class OverlayConverter extends container_converter_1.ContainerConverter {
         if (styleTop.endsWith("%") && styleTop === "50%") {
             overlaySlot.SetVerticalAlignment(UE.EVerticalAlignment.VAlign_Center);
         }
-        UE.UMGManager.SynchronizeSlotProperties(overlaySlot);
+        (0, batch_sync_1.queueSlotSync)(overlaySlot);
         this.scheduleAbsoluteChildLayout(meta, style, 0);
+    }
+    /**
+     * Completes deferred slot configuration for an overlay child that
+     * was Collapsed at mount time.  Applies alignment, absolute
+     * positioning, and padding using the existing slot.
+     */
+    completeDeferredSlotSetup(parent, child) {
+        const deferred = this._deferredSlots.get(child);
+        if (!deferred)
+            return;
+        this._deferredSlots.delete(child);
+        const style = (0, cssstyle_parser_1.getAllStyles)(deferred.typeName, deferred.props);
+        const overlaySlot = child.Slot;
+        if (!overlaySlot)
+            return;
+        const overlay = parent;
+        // Track z-index
+        const zIndex = this.extractZIndex(style);
+        if (zIndex !== 0) {
+            this.childZIndices.set(child, zIndex);
+        }
+        const alignment = (0, alignment_parser_1.parseWidgetSelfAlignment)(style);
+        overlaySlot.SetHorizontalAlignment(alignment.horizontal);
+        overlaySlot.SetVerticalAlignment(alignment.vertical);
+        overlaySlot.SetPadding(alignment.padding);
+        // Handle absolute positioning if relevant
+        const isAbsolute = this.isAbsolutePositioned(style);
+        if (!isAbsolute) {
+            this.absoluteChildren.delete(child);
+            (0, batch_sync_1.queueSlotSync)(overlaySlot);
+            return;
+        }
+        const meta = {
+            child,
+            parent: overlay,
+            slot: overlaySlot,
+            typeName: deferred.typeName,
+            props: deferred.props,
+        };
+        this.absoluteChildren.set(child, meta);
+        overlaySlot.SetHorizontalAlignment(UE.EHorizontalAlignment.HAlign_Left);
+        overlaySlot.SetVerticalAlignment(UE.EVerticalAlignment.VAlign_Top);
+        overlaySlot.SetPadding(new UE.Margin(0, 0, 0, 0));
+        const styleLeft = style?.left;
+        const styleTop = style?.top;
+        if (styleLeft || styleTop) {
+            if (styleLeft && styleLeft.endsWith("%") && styleLeft === "50%") {
+                overlaySlot.SetHorizontalAlignment(UE.EHorizontalAlignment.HAlign_Center);
+            }
+            if (styleTop && styleTop.endsWith("%") && styleTop === "50%") {
+                overlaySlot.SetVerticalAlignment(UE.EVerticalAlignment.VAlign_Center);
+            }
+            (0, batch_sync_1.queueSlotSync)(overlaySlot);
+            this.scheduleAbsoluteChildLayout(meta, style, 0);
+        }
     }
     removeChild(parent, child) {
         this.absoluteChildren.delete(child);
@@ -141,7 +209,7 @@ class OverlayConverter extends container_converter_1.ContainerConverter {
             const paddingTop = top + transformTranslate.Y;
             slot.SetPadding(new UE.Margin(paddingLeft, paddingTop, 0, 0));
         }
-        UE.UMGManager.SynchronizeSlotProperties(slot);
+        (0, batch_sync_1.queueSlotSync)(slot);
     }
     computeTransformTranslation(style, childSize) {
         let translateX = 0;

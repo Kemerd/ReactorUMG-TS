@@ -6,6 +6,7 @@ const jsx_converter_1 = require("./jsx_converter");
 const image_loader_1 = require("../misc/image_loader");
 const css_color_parser_1 = require("../parsers/css_color_parser");
 const cssstyle_parser_1 = require("../parsers/cssstyle_parser");
+const batch_sync_1 = require("../perf/batch_sync");
 /**
  * 支持的图片源src类型：
  * 1. 本地图片路径； 2. 网络图片路径； 3. UE纹理资源路径；4. 材质资源；
@@ -134,7 +135,7 @@ class ImageConverter extends jsx_converter_1.JSXConverter {
             this.scaleBox.AddChild(this.image);
         }
         if (setupProps) {
-            UE.UMGManager.SynchronizeWidgetProperties(this.image);
+            (0, batch_sync_1.queueWidgetSync)(this.image);
         }
         return this.scaleBox ? this.scaleBox : this.image;
     }
@@ -165,7 +166,7 @@ class ImageConverter extends jsx_converter_1.JSXConverter {
                 this.image.Brush.ImageSize.X = actualWidth;
                 this.image.Brush.ImageSize.Y = actualHeight;
                 this.image.SetDesiredSizeOverride(new UE.Vector2D(actualWidth, actualHeight));
-                UE.UMGManager.SynchronizeWidgetProperties(this.image);
+                (0, batch_sync_1.queueWidgetSync)(this.image);
             }
         }
         if (changedProps.color) {
@@ -174,7 +175,7 @@ class ImageConverter extends jsx_converter_1.JSXConverter {
             this.image.ColorAndOpacity.G = rgba.g;
             this.image.ColorAndOpacity.B = rgba.b;
             this.image.ColorAndOpacity.A = rgba.a;
-            UE.UMGManager.SynchronizeWidgetProperties(this.image);
+            (0, batch_sync_1.queueWidgetSync)(this.image);
         }
         // Update object-fit if style changed
         const styles = (0, cssstyle_parser_1.getAllStyles)(this.typeName, { ...this.props, ...changedProps });
@@ -197,7 +198,7 @@ class ImageConverter extends jsx_converter_1.JSXConverter {
                     this.scaleBox.SetStretch(UE.EStretch.UserSpecifiedWithClipping);
                     break;
             }
-            UE.UMGManager.SynchronizeWidgetProperties(this.scaleBox);
+            (0, batch_sync_1.queueWidgetSync)(this.scaleBox);
         }
     }
 }

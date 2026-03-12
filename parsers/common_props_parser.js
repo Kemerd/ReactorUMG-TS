@@ -317,8 +317,8 @@ function parseRotate(rotate) {
     }
     return new UE.WidgetTransform(new UE.Vector2D(0, 0), new UE.Vector2D(1, 1), new UE.Vector2D(0, 0), angle);
 }
-function parseVisibility(visibility, hitTest) {
-    if (!visibility) {
+function parseVisibility(visibility, hitTest, pointerEvents) {
+    if (!visibility && !pointerEvents) {
         return null;
     }
     let result = null;
@@ -340,10 +340,32 @@ function parseVisibility(visibility, hitTest) {
         switch (hitTest) {
             case 'self-invisible':
                 result = UE.ESlateVisibility.SelfHitTestInvisible;
+                break;
             case 'self-children-invisible':
                 result = UE.ESlateVisibility.HitTestInvisible;
+                break;
             default:
+                // Preserve the visibility value parsed above when hitTest is unrecognized
+                break;
+        }
+    }
+    // CSS pointer-events overrides hit testing behavior while keeping the
+    // widget visually present. "none" means the element is visible but
+    // ignores all pointer/mouse input (pass-through).
+    if (pointerEvents) {
+        const normalized = String(pointerEvents).toLowerCase().trim();
+        if (normalized === 'none') {
+            // Visible but neither this element nor its children receive hit tests
+            if (result === UE.ESlateVisibility.Visible || result === null) {
+                result = UE.ESlateVisibility.HitTestInvisible;
+            }
+        }
+        else if (normalized === 'auto' || normalized === 'all') {
+            // Restore normal hit testing (only override if we had previously set it)
+            if (result === UE.ESlateVisibility.HitTestInvisible ||
+                result === UE.ESlateVisibility.SelfHitTestInvisible) {
                 result = UE.ESlateVisibility.Visible;
+            }
         }
     }
     return result;

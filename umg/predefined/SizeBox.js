@@ -5,6 +5,7 @@ const UE = require("ue");
 const umg_converter_1 = require("../umg_converter");
 const css_length_parser_1 = require("../../parsers/css_length_parser");
 const utils_1 = require("../../misc/utils");
+const batch_sync_1 = require("../../perf/batch_sync");
 class SizeBoxConverter extends umg_converter_1.UMGConverter {
     constructor(typeName, props, outer) {
         super(typeName, props, outer);
@@ -45,7 +46,7 @@ class SizeBoxConverter extends umg_converter_1.UMGConverter {
         const sizeBox = new UE.SizeBox(this.outer);
         const propsInit = this.initSizeBoxProps(sizeBox, this.props);
         if (propsInit) {
-            UE.UMGManager.SynchronizeWidgetProperties(sizeBox);
+            (0, batch_sync_1.queueWidgetSync)(sizeBox);
         }
         return sizeBox;
     }
@@ -53,7 +54,7 @@ class SizeBoxConverter extends umg_converter_1.UMGConverter {
         const sizeBox = widget;
         const propsInit = this.initSizeBoxProps(sizeBox, changedProps);
         if (propsInit) {
-            UE.UMGManager.SynchronizeWidgetProperties(sizeBox);
+            (0, batch_sync_1.queueWidgetSync)(sizeBox);
         }
     }
 }

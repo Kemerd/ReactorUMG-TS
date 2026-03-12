@@ -4,6 +4,7 @@ exports.CircularThrobberConverter = void 0;
 const UE = require("ue");
 const umg_converter_1 = require("../umg_converter");
 const brush_parser_1 = require("../../parsers/brush_parser");
+const batch_sync_1 = require("../../perf/batch_sync");
 class CircularThrobberConverter extends umg_converter_1.UMGConverter {
     constructor(typeName, props, outer) {
         super(typeName, props, outer);
@@ -32,7 +33,7 @@ class CircularThrobberConverter extends umg_converter_1.UMGConverter {
         const circularThrobber = new UE.CircularThrobber(this.outer);
         const propsInit = this.setupProps(circularThrobber, this.props);
         if (propsInit) {
-            UE.UMGManager.SynchronizeWidgetProperties(circularThrobber);
+            (0, batch_sync_1.queueWidgetSync)(circularThrobber);
         }
         return circularThrobber;
     }
@@ -40,7 +41,7 @@ class CircularThrobberConverter extends umg_converter_1.UMGConverter {
         const circularThrobber = widget;
         const propsChanged = this.setupProps(circularThrobber, changedProps);
         if (propsChanged) {
-            UE.UMGManager.SynchronizeWidgetProperties(circularThrobber);
+            (0, batch_sync_1.queueWidgetSync)(circularThrobber);
         }
     }
 }

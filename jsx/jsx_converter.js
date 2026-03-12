@@ -21,19 +21,33 @@ class JSXConverter extends converter_1.ElementConverter {
             "textarea": "TextAreaConverter",
             "select": "SelectConverter",
             "text": "TextConverter",
-            "progress": "ProgressConverter"
+            "progress": "ProgressConverter",
+            "video": "VideoConverter",
+            "audio": "AudioConverter",
+            "hr": "HrBrConverter",
+            "br": "HrBrConverter"
         };
         const SkipElement = ["option", "style", "script", "link", "meta"];
         let type = this.typeName;
-        const textKeywords = ["text", "span", "p", "label", "a", "h1", "h2", "h3", "h4", "h5", "h6"];
+        const textKeywords = [
+            "text", "span", "p", "label", "a",
+            "h1", "h2", "h3", "h4", "h5", "h6",
+            // Inline formatting elements
+            "strong", "b", "em", "i", "u", "s", "code", "mark", "small", "sub", "sup"
+        ];
         if (textKeywords.includes(this.typeName)) {
             type = "text";
         }
         if (SkipElement.includes(type)) {
             return null;
         }
+        // Module path overrides: multiple element types share a single module file
+        const modulePathOverrides = {
+            'br': 'hr', // <br> shares the HrBrConverter from hr.ts
+        };
         if (JsxElementConverters.hasOwnProperty(type)) {
-            const Module = require(`./${type}`);
+            const modulePath = modulePathOverrides[type] ?? type;
+            const Module = require(`./${modulePath}`);
             if (Module) {
                 const ClassName = JsxElementConverters[type];
                 return new Module[ClassName](this.typeName, this.props, this.outer);
@@ -68,6 +82,14 @@ class JSXConverter extends converter_1.ElementConverter {
         if (parent instanceof UE.PanelWidget) {
             parent.RemoveChild(child);
         }
+    }
+    dispose() {
+        // Let the proxied converter release any internal resources
+        // (e.g. VideoConverter / AudioConverter media pipeline cleanup)
+        if (this.proxy && typeof this.proxy.dispose === 'function') {
+            this.proxy.dispose();
+        }
+        super.dispose();
     }
 }
 exports.JSXConverter = JSXConverter;

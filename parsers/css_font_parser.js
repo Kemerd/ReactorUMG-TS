@@ -6,6 +6,7 @@ exports.parseFontFaceName = parseFontFaceName;
 exports.parseFontSkewAmount = parseFontSkewAmount;
 exports.parseFontFamily = parseFontFamily;
 exports.parseOutline = parseOutline;
+exports.parseTextShadow = parseTextShadow;
 exports.parseFont = parseFont;
 exports.setupFontStyles = setupFontStyles;
 exports.hasFontStyles = hasFontStyles;
@@ -152,6 +153,92 @@ function parseOutline(outline, style) {
         result.outlineStyle = parts[0].toLowerCase();
     }
     return result;
+}
+/**
+ * Parses a CSS text-shadow value into offset, blur, and color components.
+ * Syntax: <offset-x> <offset-y> [<blur-radius>] [<color>]
+ * Multiple shadows (comma-separated) are supported; only the first is used
+ * because UMG TextBlock supports a single shadow layer.
+ *
+ * @param textShadow  CSS text-shadow string (e.g. "2px 2px 4px rgba(0,0,0,0.5)")
+ * @param style       Parent style context for unit resolution
+ * @returns Object with offsetX, offsetY, blurRadius, and color (LinearColor-like)
+ */
+function parseTextShadow(textShadow, style) {
+    if (!textShadow || typeof textShadow !== 'string') {
+        return null;
+    }
+    const trimmed = textShadow.trim().toLowerCase();
+    if (trimmed === 'none' || trimmed === '0') {
+        return null;
+    }
+    // Take only the first shadow layer (comma-separated)
+    let layer = trimmed;
+    let depth = 0;
+    for (let i = 0; i < trimmed.length; i++) {
+        if (trimmed[i] === '(')
+            depth++;
+        else if (trimmed[i] === ')')
+            depth = Math.max(0, depth - 1);
+        else if (trimmed[i] === ',' && depth === 0) {
+            layer = trimmed.slice(0, i).trim();
+            break;
+        }
+    }
+    // Tokenize, keeping parenthesized expressions (like rgba()) as single tokens
+    const tokens = [];
+    let current = '';
+    let parenDepth = 0;
+    for (let i = 0; i < layer.length; i++) {
+        const ch = layer[i];
+        if (ch === '(') {
+            parenDepth++;
+            current += ch;
+        }
+        else if (ch === ')') {
+            parenDepth = Math.max(0, parenDepth - 1);
+            current += ch;
+        }
+        else if (ch === ' ' && parenDepth === 0) {
+            if (current.length > 0) {
+                tokens.push(current);
+                current = '';
+            }
+        }
+        else {
+            current += ch;
+        }
+    }
+    if (current.length > 0)
+        tokens.push(current);
+    const lengths = [];
+    let colorStr = null;
+    for (const token of tokens) {
+        // Detect color tokens
+        if (token.startsWith('#') || token.startsWith('rgb') || token.startsWith('hsl')) {
+            colorStr = token;
+            continue;
+        }
+        // Try as a numeric length value
+        if (/^-?[\d.]/.test(token)) {
+            lengths.push((0, css_length_parser_1.convertLengthUnitToSlateUnit)(token, style));
+            continue;
+        }
+        // Named color as fallback
+        if (/^[a-z]+$/i.test(token) && token !== 'none') {
+            colorStr = token;
+        }
+    }
+    // CSS text-shadow: offsetX offsetY [blurRadius] [color]
+    const offsetX = lengths.length >= 1 ? lengths[0] : 0;
+    const offsetY = lengths.length >= 2 ? lengths[1] : 0;
+    const blurRadius = lengths.length >= 3 ? lengths[2] : 0;
+    return {
+        offsetX,
+        offsetY,
+        blurRadius,
+        color: colorStr ? (0, css_color_parser_1.parseToLinearColor)(colorStr) : null
+    };
 }
 function parseFont(style) {
     let result = {};
