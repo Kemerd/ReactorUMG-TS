@@ -123,12 +123,23 @@ export interface MediaRule {
 }
 
 /**
+ * Parsed @font-face declaration containing the family name and source URL.
+ */
+export interface FontFaceRule {
+    fontFamily: string;
+    src: string;
+    fontWeight?: string;
+    fontStyle?: string;
+}
+
+/**
  * Result of parsing a <style> block: regular rules plus any @media blocks.
  */
 export interface ParsedStyleSheet {
     rules: ParsedRule[];
     mediaRules: MediaRule[];
     keyframes: Map<string, KeyframeDefinition>;
+    fontFaces: FontFaceRule[];
 }
 
 /**
@@ -167,7 +178,8 @@ export function parseStyleSheet(cssText: string, declarationParser: (block: stri
     const result: ParsedStyleSheet = {
         rules: [],
         mediaRules: [],
-        keyframes: new Map()
+        keyframes: new Map(),
+        fontFaces: []
     };
 
     if (!cssText || typeof cssText !== 'string') {
@@ -177,8 +189,11 @@ export function parseStyleSheet(cssText: string, declarationParser: (block: stri
     // Strip C-style comments
     const sanitized = cssText.replace(/\/\*[\s\S]*?\*\//g, '');
 
+    // Extract and process @font-face blocks
+    const afterFontFaces = extractFontFaces(sanitized, result.fontFaces);
+
     // Extract and process @keyframes blocks before the main parse
-    const afterKeyframes = extractKeyframes(sanitized, declarationParser, result.keyframes);
+    const afterKeyframes = extractKeyframes(afterFontFaces, declarationParser, result.keyframes);
 
     // Extract and process @media blocks
     const afterMedia = extractMediaBlocks(afterKeyframes, declarationParser, result.mediaRules);
@@ -187,6 +202,75 @@ export function parseStyleSheet(cssText: string, declarationParser: (block: stri
     result.rules = parseRuleBlock(afterMedia, declarationParser);
 
     return result;
+}
+
+/**
+ * Extracts @font-face blocks from CSS text. Returns the text with those
+ * blocks removed so subsequent parsing can proceed cleanly.
+ */
+function extractFontFaces(css: string, target: FontFaceRule[]): string {
+    let remaining = css;
+    const headerRegex = /@font-face\s*\{/g;
+    let headerMatch: RegExpExecArray | null;
+
+    const blocks: { fullText: string; body: string }[] = [];
+
+    while ((headerMatch = headerRegex.exec(css)) !== null) {
+        const bodyStart = headerMatch.index + headerMatch[0].length;
+
+        // Count braces to find the matching closing brace
+        let depth = 1;
+        let pos = bodyStart;
+        while (pos < css.length && depth > 0) {
+            if (css[pos] === '{') depth++;
+            else if (css[pos] === '}') depth--;
+            pos++;
+        }
+
+        const body = css.substring(bodyStart, pos - 1);
+        const fullText = css.substring(headerMatch.index, pos);
+        blocks.push({ fullText, body });
+    }
+
+    // Parse each @font-face block's declarations
+    for (const block of blocks) {
+        remaining = remaining.replace(block.fullText, '');
+
+        const fontFace: Partial<FontFaceRule> = {};
+
+        // Extract font-family
+        const familyMatch = block.body.match(/font-family\s*:\s*(['"]?)([^;'"]+)\1\s*;?/i);
+        if (familyMatch) {
+            fontFace.fontFamily = familyMatch[2].trim();
+        }
+
+        // Extract src (url())
+        const srcMatch = block.body.match(/src\s*:\s*([^;]+);?/i);
+        if (srcMatch) {
+            const urlMatch = srcMatch[1].match(/url\(\s*['"]?([^'")]+)['"]?\s*\)/);
+            if (urlMatch) {
+                fontFace.src = urlMatch[1].trim();
+            }
+        }
+
+        // Extract optional font-weight
+        const weightMatch = block.body.match(/font-weight\s*:\s*([^;]+);?/i);
+        if (weightMatch) {
+            fontFace.fontWeight = weightMatch[1].trim();
+        }
+
+        // Extract optional font-style
+        const styleMatch = block.body.match(/font-style\s*:\s*([^;]+);?/i);
+        if (styleMatch) {
+            fontFace.fontStyle = styleMatch[1].trim();
+        }
+
+        if (fontFace.fontFamily && fontFace.src) {
+            target.push(fontFace as FontFaceRule);
+        }
+    }
+
+    return remaining;
 }
 
 /**

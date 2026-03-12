@@ -47,7 +47,7 @@ export abstract class ElementConverter {
                 }
                 return null;
             },
-            "Visibility": (styles: any, changeProps: any) => {return parseVisibility(styles?.visible || styles?.visibility, changeProps?.hitTest)},
+            "Visibility": (styles: any, changeProps: any) => {return parseVisibility(styles?.visible || styles?.visibility, changeProps?.hitTest, styles?.pointerEvents)},
             "ToolTipText": (_styles: any, changeProps: any) => {
                 if (changeProps && isKeyOfRecord("toolTip", changeProps)) {
                     return changeProps.toolTip ?? "";
@@ -159,7 +159,11 @@ export abstract class ElementConverter {
         const widgetProps = {};
         for (const key in this.translators) {
             const propName = this.PropMaps[key];
-            if (isKeyOfRecord(propName, styles) || isKeyOfRecord(propName, changeProps)) {
+            // pointerEvents affects Visibility but has its own CSS property name,
+            // so we check for it explicitly alongside the normal visibility prop.
+            const pointerEventsTriggersVisibility = key === 'Visibility' &&
+                (isKeyOfRecord('pointerEvents', styles) || isKeyOfRecord('pointerEvents', changeProps));
+            if (isKeyOfRecord(propName, styles) || isKeyOfRecord(propName, changeProps) || pointerEventsTriggersVisibility) {
                 const value = this.translators[key](styles, changeProps);
                 if (value !== null) {
                     widgetProps[key] = value;
@@ -180,12 +184,23 @@ export abstract class ElementConverter {
 const containerKeywords = [
     'div', 'Grid', 'grid', 'Overlay', 'overlay', 'Canvas', 'canvas',
     'form', 'section', 'article', 'main', 'header', 'footer', 'nav', 'aside',
-    'ListViewItem', 'TileViewItem'
+    'ListViewItem', 'TileViewItem',
+    // List elements: VerticalBox containers with child list-item wrappers
+    'ul', 'ol', 'li',
+    // Table elements: GridPanel-based layout
+    'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th',
+    // Structural block elements
+    'blockquote', 'figure', 'figcaption', 'details', 'summary', 'dialog',
+    'fieldset', 'legend', 'dl', 'dt', 'dd'
 ];
 const jsxComponentsKeywords = [
     'button', 'input', 'textarea', 'select', 'label', 'span', 'p', 'text',
     'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'img', 'video', 'audio', 'progress',
-    'a'
+    'a',
+    // Inline formatting elements
+    'strong', 'b', 'em', 'i', 'u', 's', 'code', 'mark', 'small', 'sub', 'sup',
+    // Structural / list / table elements
+    'hr', 'br',
 ];
 
 export function createElementConverter(typeName: string, props: any, outer: any): ElementConverter {

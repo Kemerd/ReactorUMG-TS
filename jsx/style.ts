@@ -7,7 +7,8 @@ import {
     registerInlineStyles,
     evaluateMediaCondition,
     type MediaRule,
-    type KeyframeDefinition
+    type KeyframeDefinition,
+    type FontFaceRule
 } from '../parsers/inline_style_registry';
 import { registerKeyframes } from '../parsers/css_transition_engine';
 
@@ -99,8 +100,39 @@ export class StyleTagConverter extends ElementConverter {
             registerKeyframes(name, definition);
         }
 
+        // Register @font-face declarations with the UE font system
+        this.applyFontFaces(sheet.fontFaces);
+
         // Evaluate @media rules against current viewport if we can determine it
         this.applyMediaRules();
+    }
+
+    /**
+     * Registers @font-face declarations with UE's font family resolver.
+     * Each declaration maps a CSS font-family name to a UE font asset
+     * via UMGManager::FindFontFamily.
+     */
+    private applyFontFaces(fontFaces: FontFaceRule[]): void {
+        if (!fontFaces || fontFaces.length === 0) {
+            return;
+        }
+
+        for (const face of fontFaces) {
+            try {
+                // Build a font family name array for UMGManager::FindFontFamily
+                let familyNames = UE.NewArray(UE.BuiltinString);
+                familyNames.Add(face.fontFamily);
+
+                // Attempt to load/register the font. FindFontFamily will look for
+                // the font in /ReactorUMG/FontFamily/ and fall back to engine fonts.
+                const fontObj = UE.UMGManager.FindFontFamily(familyNames, this.outer);
+                if (fontObj) {
+                    console.log(`[ReactorUMG] @font-face registered: "${face.fontFamily}"`);
+                }
+            } catch (e) {
+                console.warn(`[ReactorUMG] @font-face failed for "${face.fontFamily}":`, e);
+            }
+        }
     }
 
     /**

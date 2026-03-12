@@ -3,12 +3,14 @@ import { ElementConverter } from "../converter";
 import { getAllStyles } from "../parsers/cssstyle_parser";
 import { convertMargin, convertPadding } from "../parsers/css_margin_parser";
 import { parseBackgroundProps } from "../parsers/css_background_parser";
+import { createGradientBrush } from "../parsers/css_gradient_parser";
 import { parseToLinearColor } from "../parsers/css_color_parser";
 import { convertLengthUnitToSlateUnit, parseScale, parseAspectRatio } from "../parsers/css_length_parser";
 import { safeParseFloat } from "../misc/utils";
 import { parseWidgetSelfAlignment } from "../parsers/alignment_parser";
-import { hasFontStyles, setupFontStyles } from "../parsers/css_font_parser";
+import { hasFontStyles, setupFontStyles, parseTextShadow } from "../parsers/css_font_parser";
 import { processBorderStyles, applyOutlineToBrush, parseBoxShadow } from "../parsers/css_border_parser";
+import { parseFilter, getBlurRadius, getCombinedBrightness, getCombinedOpacity, FilterFunction } from "../parsers/css_filter_parser";
 import { queueWidgetSync } from "../perf/batch_sync";
 
 /**
@@ -76,7 +78,18 @@ export class ContainerConverter extends ElementConverter {
      */
     private parseContainerType(type: string) {
         const normalizedType = (type || '').toLowerCase();
-        const semanticDivs = ['form', 'section', 'article', 'main', 'header', 'footer', 'nav', 'aside'];
+
+        // All of these semantic/structural elements map to div-like flex containers
+        const semanticDivs = [
+            'form', 'section', 'article', 'main', 'header', 'footer', 'nav', 'aside',
+            // List elements: vertical stacking containers
+            'ul', 'ol', 'li',
+            // Table elements: use flex for basic row/cell layout
+            'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th',
+            // Structural block elements
+            'blockquote', 'figure', 'figcaption', 'details', 'summary', 'dialog',
+            'fieldset', 'legend', 'dl', 'dt', 'dd'
+        ];
 
         if (normalizedType === 'div' || semanticDivs.includes(normalizedType)) {
             const display = this.containerStyle?.display || 'flex';
@@ -91,15 +104,12 @@ export class ContainerConverter extends ElementConverter {
             switch (position) {
                 case 'absolute':
                 case 'fixed':
-                    // Absolute/fixed positioning maps to CanvasPanel for free placement
                     return 'canvas';
                 case 'relative':
-                    // Relative positioning uses Overlay (allows top/left offsets within flow)
                     return 'overlay';
                 case 'static':
                 case 'sticky':
                 default:
-                    // Normal flow uses flex layout
                     return 'flex';
             }
         } else {
@@ -136,7 +146,17 @@ export class ContainerConverter extends ElementConverter {
             }
             const border = borderWidget as UE.Border;
 
-            if (parsedBackgroundProps?.image) {
+            if (parsedBackgroundProps?.gradient) {
+                // CSS gradient detected: generate a runtime texture via C++ helper
+                const gradientBrush = createGradientBrush(parsedBackgroundProps.gradient, this.outer);
+                if (gradientBrush) {
+                    if (usingBorderStyling) {
+                        applyOutlineToBrush(gradientBrush, borderOutline);
+                    }
+                    border.SetBrush(gradientBrush);
+                    useBorder = true;
+                }
+            } else if (parsedBackgroundProps?.image) {
                 // Apply border-radius/outline to the background image brush
                 if (usingBorderStyling) {
                     applyOutlineToBrush(parsedBackgroundProps.image, borderOutline);
@@ -302,6 +322,9 @@ export class ContainerConverter extends ElementConverter {
         }
     }
 
+    /** Tracks the BackgroundBlur wrapper when filter/backdropFilter blur is active */
+    blurWidget: UE.BackgroundBlur | null = null;
+
     /** Tracks the ScrollBox wrapper when overflow:scroll/auto is active */
     scrollBoxWrapper: UE.ScrollBox | null = null;
 
@@ -375,6 +398,67 @@ export class ContainerConverter extends ElementConverter {
 
         queueWidgetSync(scrollBox);
         return scrollBox;
+    }
+
+    /**
+     * Wraps a widget in a UBackgroundBlur when CSS `filter: blur()` or
+     * `backdropFilter: blur()` is detected. Also applies non-blur filter
+     * effects (brightness, opacity) as ColorAndOpacity/RenderOpacity tints.
+     */
+    private setupFilterEffects(widget: UE.Widget, existingBlur?: UE.BackgroundBlur, updateProps?: any): UE.Widget {
+        let style = this.containerStyle;
+        if (updateProps) {
+            style = getAllStyles(this.typeName, updateProps);
+        }
+        if (!style) return widget;
+
+        // Parse both filter and backdropFilter
+        const filterStr = style.filter ?? style.WebkitFilter;
+        const backdropStr = style.backdropFilter ?? style.WebkitBackdropFilter;
+
+        const filters: FilterFunction[] = filterStr ? parseFilter(filterStr) : [];
+        const backdropFilters: FilterFunction[] = backdropStr ? parseFilter(backdropStr) : [];
+
+        // Determine blur radius: backdrop-filter blur is the primary use case
+        // for UBackgroundBlur. Regular filter blur also applies.
+        const backdropBlur = getBlurRadius(backdropFilters);
+        const filterBlur = getBlurRadius(filters);
+        const blurRadius = Math.max(backdropBlur, filterBlur);
+
+        if (blurRadius > 0) {
+            let blurBox: UE.BackgroundBlur;
+            if (existingBlur) {
+                blurBox = existingBlur;
+            } else {
+                blurBox = new UE.BackgroundBlur(this.outer);
+            }
+
+            blurBox.SetBlurRadius(Math.round(blurRadius));
+
+            // Only add child on initial creation
+            if (!existingBlur) {
+                blurBox.AddChild(widget);
+                this.blurWidget = blurBox;
+            }
+
+            queueWidgetSync(blurBox);
+            widget = blurBox;
+        }
+
+        // Apply non-blur filter effects as tints/opacity on the widget itself
+        const brightness = getCombinedBrightness(filters);
+        if (brightness !== 1.0 && widget) {
+            // Approximate brightness as a uniform color multiplier
+            const b = Math.max(0, Math.min(brightness, 3));
+            widget.SetColorAndOpacity(new UE.LinearColor(b, b, b, 1));
+        }
+
+        const opacity = getCombinedOpacity(filters);
+        if (opacity < 1.0 && widget) {
+            widget.SetRenderOpacity(Math.max(0, Math.min(opacity, 1)));
+        }
+
+        return widget;
     }
 
     private initClipChildWidget(parentWidget: UE.Widget) {
@@ -520,6 +604,11 @@ export class ContainerConverter extends ElementConverter {
                 widget = this.setupScrollOverflow(widget);
             }
 
+            // Wrap in BackgroundBlur if filter/backdrop-filter blur is specified
+            if (widget) {
+                widget = this.setupFilterEffects(widget);
+            }
+
             if (widget) {
                 widget = this.setupBackground(widget);
                 this.borderWidget = widget instanceof UE.Border ? widget : null;
@@ -534,15 +623,119 @@ export class ContainerConverter extends ElementConverter {
                 widget = this.setupBoxScale(widget);
                 this.scaleBoxWidget = widget instanceof UE.ScaleBox ? widget : null;
             }
+
+            // Inject ::before pseudo-element content into the original panel widget.
+            // This runs after all wrappers are created so the text appears inside
+            // the container's layout flow.
+            this._injectPseudoElements();
         }
 
         return widget;
     }
 
+    /**
+     * Synthetic TextBlock children injected for ::before and ::after pseudo-elements.
+     * We keep references to remove/update them if the container is re-rendered.
+     */
+    private _beforePseudoWidget: UE.TextBlock | null = null;
+    private _afterPseudoWidget: UE.TextBlock | null = null;
+
+    /**
+     * Checks for ::before and ::after pseudo-element styles with a `content` property
+     * and injects synthetic TextBlock children at the start/end of the container.
+     */
+    private _injectPseudoElements(): void {
+        if (!this.originalWidget || !(this.originalWidget instanceof UE.PanelWidget)) return;
+
+        const panel = this.originalWidget as UE.PanelWidget;
+
+        // Check for ::before pseudo-element styles
+        const beforeStyles = getAllStyles(this.typeName, this.props, '::before')
+            ?? getAllStyles(this.typeName, this.props, 'before');
+        if (beforeStyles?.content && typeof beforeStyles.content === 'string') {
+            const content = this._resolvePseudoContent(beforeStyles.content);
+            if (content) {
+                const textBlock = new UE.TextBlock(this.outer);
+                textBlock.SetText(content);
+                this._applyPseudoTextStyles(textBlock, beforeStyles);
+                panel.AddChild(textBlock);
+                this._beforePseudoWidget = textBlock;
+                queueWidgetSync(textBlock);
+            }
+        }
+
+        // Check for ::after pseudo-element styles
+        const afterStyles = getAllStyles(this.typeName, this.props, '::after')
+            ?? getAllStyles(this.typeName, this.props, 'after');
+        if (afterStyles?.content && typeof afterStyles.content === 'string') {
+            const content = this._resolvePseudoContent(afterStyles.content);
+            if (content) {
+                const textBlock = new UE.TextBlock(this.outer);
+                textBlock.SetText(content);
+                this._applyPseudoTextStyles(textBlock, afterStyles);
+                panel.AddChild(textBlock);
+                this._afterPseudoWidget = textBlock;
+                queueWidgetSync(textBlock);
+            }
+        }
+    }
+
+    /**
+     * Resolves the CSS `content` property value by stripping quotes
+     * and handling special values like 'none', 'normal', '' etc.
+     */
+    private _resolvePseudoContent(content: string): string | null {
+        if (!content) return null;
+        const trimmed = content.trim();
+        if (trimmed === 'none' || trimmed === 'normal' || trimmed === '""' || trimmed === "''") {
+            return null;
+        }
+        // Strip surrounding quotes
+        if ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+            (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+            return trimmed.slice(1, -1);
+        }
+        return trimmed;
+    }
+
+    /**
+     * Applies styling from the pseudo-element's style declaration to a TextBlock.
+     * Covers color, font, and common text properties.
+     */
+    private _applyPseudoTextStyles(textBlock: UE.TextBlock, styles: Record<string, any>): void {
+        // Color
+        const fontColor = styles.color;
+        if (fontColor) {
+            const rgba = parseToLinearColor(fontColor);
+            const specifiedColor = textBlock.ColorAndOpacity?.SpecifiedColor;
+            if (specifiedColor) {
+                specifiedColor.R = rgba.r;
+                specifiedColor.G = rgba.g;
+                specifiedColor.B = rgba.b;
+                specifiedColor.A = rgba.a;
+            }
+        }
+
+        // Font styles
+        if (hasFontStyles(styles)) {
+            if (!textBlock.Font) {
+                const fontStyles = new UE.SlateFontInfo();
+                setupFontStyles(textBlock, fontStyles, styles);
+                textBlock.SetFont(fontStyles);
+            } else {
+                setupFontStyles(textBlock, textBlock.Font, styles);
+            }
+        }
+    }
+
     update(widget: UE.Widget, oldProps: any, changedProps: any): void {
         if (this.proxy) {
             this.proxy.update(widget, oldProps, changedProps);
-            // update props
+            // Update filter/blur effects
+            if (this.blurWidget) {
+                this.setupFilterEffects(widget, this.blurWidget, changedProps);
+            }
+            // Update background
             if (this.borderWidget) {
                 this.setupBackground(widget, this.borderWidget, changedProps);
             }
@@ -646,6 +839,44 @@ export class ContainerConverter extends ElementConverter {
             }
             if (resolved !== null && resolved !== undefined) {
                 child.LineHeightPercentage = resolved as number;
+            }
+        }
+
+        // Text shadow (inherited from parent container style)
+        const textShadow = (styles as any)?.textShadow;
+        if (textShadow) {
+            const parsed = parseTextShadow(textShadow, styles);
+            if (parsed) {
+                child.SetShadowOffset(new UE.Vector2D(parsed.offsetX, parsed.offsetY));
+                if (parsed.color) {
+                    child.SetShadowColorAndOpacity(
+                        new UE.LinearColor(parsed.color.r, parsed.color.g, parsed.color.b, parsed.color.a)
+                    );
+                } else {
+                    child.SetShadowColorAndOpacity(new UE.LinearColor(0, 0, 0, 0.5));
+                }
+            }
+        }
+
+        // Text overflow policy (inherited from parent container style)
+        const textOverflow = (styles as any)?.textOverflow;
+        if (textOverflow) {
+            const normalized = String(textOverflow).toLowerCase().trim();
+            if (normalized === 'ellipsis') {
+                child.SetTextOverflowPolicy(UE.ETextOverflowPolicy.Ellipsis);
+            } else if (normalized === 'clip') {
+                child.SetTextOverflowPolicy(UE.ETextOverflowPolicy.Clip);
+            }
+        }
+
+        // Word break / overflow wrap (inherited from parent container style)
+        const wordBreak = (styles as any)?.wordBreak ?? (styles as any)?.overflowWrap;
+        if (wordBreak) {
+            const normalized = String(wordBreak).toLowerCase().trim();
+            if (normalized === 'break-all' || normalized === 'break-word') {
+                child.AutoWrapText = true;
+            } else if (normalized === 'keep-all' || normalized === 'nowrap') {
+                child.AutoWrapText = false;
             }
         }
 

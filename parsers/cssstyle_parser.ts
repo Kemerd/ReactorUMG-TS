@@ -222,6 +222,32 @@ export function getAllStyles(type: string, props: any, pseudo?: string): Record<
     // typeStyle < attributeTypeStyles < classNameStyles < parentDescendantStyles < idStyle < inlineStyles
     const merged = {  ...typeStyle, ...attributeTypeStyles, ...classNameStyles, ...parentDescendantStyles, ...idStyle, ...inlineStyles };
 
+    // Evaluate structural pseudo-classes (:first-child, :last-child, :nth-child)
+    // when rendering base styles (no explicit pseudo parameter).
+    // These are position-dependent and use __childIndex / __childCount injected by the renderer.
+    if (!pseudo || pseudo === 'base') {
+        const childIndex = props.__childIndex;
+        const childCount = props.__childCount;
+        if (childIndex !== undefined && childCount !== undefined) {
+            // :first-child -> index 0
+            if (childIndex === 0) {
+                mergeStyleRecords(merged, getStylesFromClassSelector(props?.className, 'first-child'));
+                mergeStyleRecords(merged, getStyleFromIdSelector(props?.id, 'first-child'));
+                mergeStyleRecords(merged, getStyleFromTypeSelector(type, 'first-child'));
+            }
+            // :last-child -> index === count - 1
+            if (childIndex === childCount - 1) {
+                mergeStyleRecords(merged, getStylesFromClassSelector(props?.className, 'last-child'));
+                mergeStyleRecords(merged, getStyleFromIdSelector(props?.id, 'last-child'));
+                mergeStyleRecords(merged, getStyleFromTypeSelector(type, 'last-child'));
+            }
+            // :nth-child(odd) and :nth-child(even)
+            const isOdd = (childIndex % 2 === 0); // 0-indexed, so index 0 = 1st child = odd
+            mergeStyleRecords(merged, getStylesFromClassSelector(props?.className, isOdd ? 'nth-child(odd)' : 'nth-child(even)'));
+            mergeStyleRecords(merged, getStyleFromTypeSelector(type, isOdd ? 'nth-child(odd)' : 'nth-child(even)'));
+        }
+    }
+
     // Resolve any CSS custom property references (var(--name)) in the merged styles.
     // Build a scope chain from most-specific to least-specific for cascading lookup.
     const scopeChain = buildScopeChain(props?.id, props?.className, type);

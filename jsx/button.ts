@@ -3,6 +3,7 @@ import { parseToLinearColor } from "../parsers/css_color_parser";
 import { getAllStyles } from "../parsers/cssstyle_parser";
 import { JSXConverter } from "./jsx_converter";
 import { parseBackgroundProps } from "../parsers/css_background_parser";
+import { createGradientBrush } from "../parsers/css_gradient_parser";
 import { parseBrush } from "../parsers/brush_parser";
 import { convertToUEMargin } from "../parsers/css_margin_parser";
 import { queueWidgetSync } from "../perf/batch_sync";
@@ -104,10 +105,19 @@ export class ButtonConverter extends JSXConverter {
         };
 
         const parsedBackground = parseBackgroundProps(backgroundSource);
-        const normalBrush = parsedBackground?.image ?? button.WidgetStyle.Normal;
 
-        if (parsedBackground?.image) {
-            button.WidgetStyle.Normal = parsedBackground.image;
+        // Resolve the background brush: check gradient first, then image, then fallback
+        let resolvedBrush: UE.SlateBrush | null = null;
+        if (parsedBackground?.gradient) {
+            resolvedBrush = createGradientBrush(parsedBackground.gradient, this.outer);
+        }
+        if (!resolvedBrush && parsedBackground?.image) {
+            resolvedBrush = parsedBackground.image;
+        }
+        const normalBrush = resolvedBrush ?? button.WidgetStyle.Normal;
+
+        if (resolvedBrush) {
+            button.WidgetStyle.Normal = resolvedBrush;
         }
 
         if (parsedBackground?.color) {

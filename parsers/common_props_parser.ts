@@ -376,8 +376,8 @@ export function parseRotate(rotate: CssType.Property.Rotate) {
     );
 }
 
-export function parseVisibility(visibility: string, hitTest?: string): UE.ESlateVisibility {
-    if (!visibility) {
+export function parseVisibility(visibility: string, hitTest?: string, pointerEvents?: string): UE.ESlateVisibility {
+    if (!visibility && !pointerEvents) {
         return null;
     }
 
@@ -408,6 +408,25 @@ export function parseVisibility(visibility: string, hitTest?: string): UE.ESlate
             default:
                 // Preserve the visibility value parsed above when hitTest is unrecognized
                 break;
+        }
+    }
+
+    // CSS pointer-events overrides hit testing behavior while keeping the
+    // widget visually present. "none" means the element is visible but
+    // ignores all pointer/mouse input (pass-through).
+    if (pointerEvents) {
+        const normalized = String(pointerEvents).toLowerCase().trim();
+        if (normalized === 'none') {
+            // Visible but neither this element nor its children receive hit tests
+            if (result === UE.ESlateVisibility.Visible || result === null) {
+                result = UE.ESlateVisibility.HitTestInvisible;
+            }
+        } else if (normalized === 'auto' || normalized === 'all') {
+            // Restore normal hit testing (only override if we had previously set it)
+            if (result === UE.ESlateVisibility.HitTestInvisible ||
+                result === UE.ESlateVisibility.SelfHitTestInvisible) {
+                result = UE.ESlateVisibility.Visible;
+            }
         }
     }
 

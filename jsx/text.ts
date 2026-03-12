@@ -1,5 +1,5 @@
 import { parseToLinearColor } from '../parsers/css_color_parser';
-import { hasFontStyles, setupFontStyles } from '../parsers/css_font_parser';
+import { hasFontStyles, setupFontStyles, parseTextShadow } from '../parsers/css_font_parser';
 import { convertLengthUnitToSlateUnit } from '../parsers/css_length_parser';
 import { convertGap, convertPadding } from '../parsers/css_margin_parser';
 import { getAllStyles } from '../parsers/cssstyle_parser';
@@ -88,6 +88,62 @@ export class TextConverter extends JSXConverter {
             fontFamily: 'monospace',
             lineHeight: '1.4',
             color: 'white'
+        },
+        // Inline formatting elements with appropriate default styles
+        'strong': {
+            fontWeight: '700',
+            lineHeight: '1.4',
+            color: 'white'
+        },
+        'b': {
+            fontWeight: '700',
+            lineHeight: '1.4',
+            color: 'white'
+        },
+        'em': {
+            fontStyle: 'italic',
+            lineHeight: '1.4',
+            color: 'white'
+        },
+        'i': {
+            fontStyle: 'italic',
+            lineHeight: '1.4',
+            color: 'white'
+        },
+        'u': {
+            textDecoration: 'underline',
+            lineHeight: '1.4',
+            color: 'white'
+        },
+        's': {
+            textDecoration: 'line-through',
+            lineHeight: '1.4',
+            color: 'white'
+        },
+        'code': {
+            fontFamily: 'monospace',
+            fontSize: '14px',
+            lineHeight: '1.4',
+            color: 'white'
+        },
+        'mark': {
+            lineHeight: '1.4',
+            color: 'black'
+        },
+        'small': {
+            fontSize: '12px',
+            lineHeight: '1.4',
+            color: 'white'
+        },
+        'sub': {
+            fontSize: '12px',
+            lineHeight: '1.0',
+            color: 'white'
+        },
+        'sup': {
+            fontSize: '12px',
+            lineHeight: '1.0',
+            color: 'white'
         }
     };
     private readonly loweredTypeName: string;
@@ -108,6 +164,11 @@ export class TextConverter extends JSXConverter {
             textAlign: (textBlock, prop) => this.setupTextAlignment(textBlock, prop),
             textTransform: (textBlock, prop) => this.setupTextTransform(textBlock, prop),
             lineHeight: (textBlock, prop) => this.setupLineHeight(textBlock, prop),
+            textShadow: (textBlock, prop) => this.setupTextShadow(textBlock, prop),
+            textDecoration: (textBlock, prop) => this.setupTextDecoration(textBlock, prop),
+            textOverflow: (textBlock, prop) => this.setupTextOverflow(textBlock, prop),
+            wordBreak: (textBlock, prop) => this.setupWordBreak(textBlock, prop),
+            overflowWrap: (textBlock, prop) => this.setupWordBreak(textBlock, prop),
         };
         this.textWrapBoxSlots = new Map();
     }
@@ -197,6 +258,145 @@ export class TextConverter extends JSXConverter {
         const resolved = this.normalizeLineHeight(lineHeight, prop);
         if (resolved !== null) {
             textBlock.LineHeightPercentage = resolved;
+        }
+    }
+
+    /**
+     * Applies CSS text-shadow to the TextBlock's native shadow properties.
+     * UMG TextBlock supports a single shadow layer with offset + color.
+     */
+    private setupTextShadow(textBlock: UE.TextBlock, prop: any) {
+        const textShadow = prop?.textShadow;
+        if (!textShadow) {
+            return;
+        }
+
+        const parsed = parseTextShadow(textShadow, prop);
+        if (!parsed) {
+            return;
+        }
+
+        // Apply shadow offset (UMG uses Vector2D for shadow position)
+        textBlock.SetShadowOffset(new UE.Vector2D(parsed.offsetX, parsed.offsetY));
+
+        // Apply shadow color and opacity
+        if (parsed.color) {
+            textBlock.SetShadowColorAndOpacity(
+                new UE.LinearColor(parsed.color.r, parsed.color.g, parsed.color.b, parsed.color.a)
+            );
+        } else {
+            // Default shadow color: semi-transparent black
+            textBlock.SetShadowColorAndOpacity(
+                new UE.LinearColor(0, 0, 0, 0.5)
+            );
+        }
+    }
+
+    /**
+     * Applies CSS text-decoration to the TextBlock's style brushes.
+     * Maps underline -> UnderlineBrush, line-through -> StrikeBrush.
+     * UMG uses SlateBrush for these; we create a simple solid white brush
+     * that gets tinted by the text color.
+     */
+    private setupTextDecoration(textBlock: UE.TextBlock, prop: any) {
+        const textDecoration = prop?.textDecoration;
+        if (!textDecoration) {
+            return;
+        }
+
+        const normalized = String(textDecoration).toLowerCase();
+
+        // Build a simple 1px solid brush for decoration lines
+        const makeDecorationBrush = (): UE.SlateBrush => {
+            const brush = new UE.SlateBrush();
+            brush.DrawAs = UE.ESlateBrushDrawType.Image;
+            return brush;
+        };
+
+        // Check for underline
+        if (normalized.includes('underline')) {
+            const style = (textBlock as any).WidgetStyle ?? (textBlock as any).DefaultTextStyle;
+            if (style && style.UnderlineBrush !== undefined) {
+                style.UnderlineBrush = makeDecorationBrush();
+            }
+        }
+
+        // Check for line-through (strikethrough)
+        if (normalized.includes('line-through')) {
+            const style = (textBlock as any).WidgetStyle ?? (textBlock as any).DefaultTextStyle;
+            if (style && style.StrikeBrush !== undefined) {
+                style.StrikeBrush = makeDecorationBrush();
+            }
+        }
+
+        // "none" clears both decoration brushes
+        if (normalized === 'none') {
+            const style = (textBlock as any).WidgetStyle ?? (textBlock as any).DefaultTextStyle;
+            if (style) {
+                if (style.UnderlineBrush !== undefined) {
+                    style.UnderlineBrush = new UE.SlateBrush();
+                    style.UnderlineBrush.DrawAs = UE.ESlateBrushDrawType.NoDrawType;
+                }
+                if (style.StrikeBrush !== undefined) {
+                    style.StrikeBrush = new UE.SlateBrush();
+                    style.StrikeBrush.DrawAs = UE.ESlateBrushDrawType.NoDrawType;
+                }
+            }
+        }
+    }
+
+    /**
+     * Applies CSS text-overflow to UMG's native overflow policy.
+     * Maps ellipsis -> Ellipsis, clip -> Clip. UMG also supports
+     * MultilineEllipsis for multi-line truncation.
+     */
+    private setupTextOverflow(textBlock: UE.TextBlock, prop: any) {
+        const textOverflow = prop?.textOverflow;
+        if (!textOverflow) {
+            return;
+        }
+
+        const normalized = String(textOverflow).toLowerCase().trim();
+        switch (normalized) {
+            case 'ellipsis':
+                textBlock.SetTextOverflowPolicy(UE.ETextOverflowPolicy.Ellipsis);
+                break;
+            case 'clip':
+                textBlock.SetTextOverflowPolicy(UE.ETextOverflowPolicy.Clip);
+                break;
+            default:
+                textBlock.SetTextOverflowPolicy(UE.ETextOverflowPolicy.Clip);
+                break;
+        }
+    }
+
+    /**
+     * Applies CSS word-break / overflow-wrap to UMG's text wrapping behavior.
+     * break-all / break-word -> force wrap, keep-all / nowrap -> no wrap,
+     * normal -> auto wrap (default behavior).
+     */
+    private setupWordBreak(textBlock: UE.TextBlock, prop: any) {
+        const wordBreak = prop?.wordBreak ?? prop?.overflowWrap;
+        if (!wordBreak) {
+            return;
+        }
+
+        const normalized = String(wordBreak).toLowerCase().trim();
+        switch (normalized) {
+            case 'break-all':
+            case 'break-word':
+                // Force wrapping at any character boundary
+                textBlock.AutoWrapText = true;
+                break;
+            case 'keep-all':
+            case 'nowrap':
+                textBlock.AutoWrapText = false;
+                break;
+            case 'normal':
+            default:
+                // Use the element-type default (auto-wrap for most, no-wrap for pre)
+                textBlock.AutoWrapText = this.loweredTypeName !== 'pre';
+                break;
         }
     }
 

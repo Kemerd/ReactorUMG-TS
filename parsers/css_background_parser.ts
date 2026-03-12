@@ -2,6 +2,7 @@ import * as UE from 'ue';
 import { ImageLoader } from '../misc/image_loader';
 import { parseToLinearColor } from './css_color_parser';
 import { convertLengthUnitToSlateUnit } from './css_length_parser';
+import { isGradientValue, parseGradient, GradientData } from './css_gradient_parser';
 
 function parseBackgroundLayer(layer) {
     const REPEAT_KEYWORDS = {
@@ -340,6 +341,12 @@ export function parseBackgroundImage(backgroundImage: string, backgroundSize: st
         return brush;
     }
 
+    // Gradient values are handled separately via parseGradient() + createGradientBrush().
+    // Return null here so the caller knows to check for gradient data instead.
+    if (isGradientValue(backgroundImage)) {
+        return undefined;
+    }
+
     let imagePath = backgroundImage;
 
     // Handle template literal with imported texture
@@ -474,14 +481,23 @@ export function parseBackground(background: string) : any {
 }
 
 export function parseBackgroundProps(style: any): any {
-    // image转换成brush image
-    // repeat转换成image中的tiling模式
-    // position转换成alignment和padding
+    // image -> brush image
+    // repeat -> image tiling mode
+    // position -> alignment and padding
+    // gradient -> GradientData for deferred texture creation via C++
 
-    let result = {};
+    let result: any = {};
     const background = style?.background;
     if (background) {
-        result = parseBackground(background);
+        // Check if the shorthand `background` value itself is a gradient
+        if (typeof background === 'string' && isGradientValue(background)) {
+            const gradient = parseGradient(background);
+            if (gradient) {
+                result['gradient'] = gradient;
+            }
+        } else {
+            result = parseBackground(background);
+        }
     }
 
     const backgroundColor = style?.backgroundColor;
@@ -492,7 +508,15 @@ export function parseBackgroundProps(style: any): any {
     const backgroundImage = style?.backgroundImage;
     const backgroundSize = style?.backgroundSize;
     if (backgroundImage) {
-        result['image'] = parseBackgroundImage(backgroundImage, backgroundSize);
+        // Detect gradient syntax in backgroundImage property
+        if (typeof backgroundImage === 'string' && isGradientValue(backgroundImage)) {
+            const gradient = parseGradient(backgroundImage);
+            if (gradient) {
+                result['gradient'] = gradient;
+            }
+        } else {
+            result['image'] = parseBackgroundImage(backgroundImage, backgroundSize);
+        }
     }
 
     const backgroundRepeat = style?.backgroundRepeat;

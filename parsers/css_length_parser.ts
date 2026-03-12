@@ -1,4 +1,4 @@
-﻿import * as UE from "ue";
+import * as UE from "ue";
 import { safeParseFloat } from "../misc/utils";
 
 /**
@@ -8,6 +8,124 @@ import { safeParseFloat } from "../misc/utils";
  * @param style - React style object containing font size reference
  * @returns Converted value in SU units
  */
+/**
+ * Evaluates a CSS calc() expression by recursively resolving arithmetic
+ * operations (+, -, *, /) between length values. Supports nested calc(),
+ * parenthesized sub-expressions, and all unit types handled by
+ * convertLengthUnitToSlateUnit.
+ *
+ * @param expr           The calc() expression string (without the outer "calc()")
+ * @param style          React style context for font-size based units (em, rem)
+ * @param referenceSize  Reference dimension for percentage-based values
+ * @param canvasSize     Viewport dimensions for vw/vh units
+ * @returns              The computed numeric result in Slate Units
+ */
+export function evaluateCalcExpression(
+    expr: string,
+    style?: any,
+    referenceSize?: number,
+    canvasSize?: UE.Vector2D
+): number {
+    if (!expr || typeof expr !== 'string') return 0;
+
+    let cleaned = expr.trim();
+
+    // Strip outer calc() wrapper if present (handles nested calc)
+    while (cleaned.toLowerCase().startsWith('calc(') && cleaned.endsWith(')')) {
+        cleaned = cleaned.slice(5, -1).trim();
+    }
+
+    // Tokenize: split on operators (+, -, *, /) while keeping them.
+    // Respect parenthesized sub-expressions.
+    const tokens: string[] = [];
+    let current = '';
+    let depth = 0;
+
+    for (let i = 0; i < cleaned.length; i++) {
+        const ch = cleaned[i];
+        if (ch === '(') { depth++; current += ch; continue; }
+        if (ch === ')') { depth = Math.max(0, depth - 1); current += ch; continue; }
+
+        // At top-level, split on + and - (but not inside a number like "-5px" or scientific notation)
+        if (depth === 0 && (ch === '+' || ch === '-') && i > 0) {
+            const prevChar = cleaned[i - 1];
+            // Only split if preceded by whitespace or a closing paren or digit/unit-letter
+            if (prevChar === ' ' || prevChar === ')' || /[a-z%\d]/.test(prevChar)) {
+                // Check if this is an operator (preceded and followed by space)
+                const prevIsSpace = cleaned[i - 1] === ' ';
+                const nextIsSpace = i + 1 < cleaned.length && cleaned[i + 1] === ' ';
+                if (prevIsSpace || nextIsSpace) {
+                    if (current.trim()) tokens.push(current.trim());
+                    tokens.push(ch);
+                    current = '';
+                    continue;
+                }
+            }
+        }
+
+        if (depth === 0 && (ch === '*' || ch === '/')) {
+            if (current.trim()) tokens.push(current.trim());
+            tokens.push(ch);
+            current = '';
+            continue;
+        }
+
+        current += ch;
+    }
+    if (current.trim()) tokens.push(current.trim());
+
+    // Resolve each value token to a number
+    const resolveToken = (token: string): number => {
+        const t = token.trim();
+        // Parenthesized sub-expression or nested calc()
+        if (t.startsWith('(') && t.endsWith(')')) {
+            return evaluateCalcExpression(t.slice(1, -1), style, referenceSize, canvasSize);
+        }
+        if (t.toLowerCase().startsWith('calc(')) {
+            return evaluateCalcExpression(t, style, referenceSize, canvasSize);
+        }
+        return convertLengthUnitToSlateUnit(t, style, referenceSize, canvasSize);
+    };
+
+    // Two-pass evaluation: first * and /, then + and -
+    // Convert tokens to a list of {value, operator}
+    const values: number[] = [];
+    const ops: string[] = [];
+
+    for (let i = 0; i < tokens.length; i++) {
+        const t = tokens[i];
+        if (t === '+' || t === '-' || t === '*' || t === '/') {
+            ops.push(t);
+        } else {
+            values.push(resolveToken(t));
+        }
+    }
+
+    // Pass 1: resolve * and /
+    const values2: number[] = [values[0]];
+    const ops2: string[] = [];
+    for (let i = 0; i < ops.length; i++) {
+        if (ops[i] === '*') {
+            values2[values2.length - 1] *= values[i + 1];
+        } else if (ops[i] === '/') {
+            const divisor = values[i + 1];
+            values2[values2.length - 1] /= (divisor !== 0 ? divisor : 1);
+        } else {
+            ops2.push(ops[i]);
+            values2.push(values[i + 1]);
+        }
+    }
+
+    // Pass 2: resolve + and -
+    let result = values2[0] ?? 0;
+    for (let i = 0; i < ops2.length; i++) {
+        if (ops2[i] === '+') result += values2[i + 1];
+        else if (ops2[i] === '-') result -= values2[i + 1];
+    }
+
+    return result;
+}
+
 export function convertLengthUnitToSlateUnit(length: string | number | undefined, style: any, referenceSize?: number, canvasSize?: UE.Vector2D/*目前无法在非运行时下获取到画布大小*/): number {
     if (length === undefined || length === null) {
         return 0;
@@ -18,6 +136,11 @@ export function convertLengthUnitToSlateUnit(length: string | number | undefined
     }
 
     const normalized = String(length).trim();
+
+    // Handle calc() expressions
+    if (normalized.toLowerCase().startsWith('calc(') && normalized.endsWith(')')) {
+        return evaluateCalcExpression(normalized, style, referenceSize, canvasSize);
+    }
 
     let fontSize = style?.fontSize ?? "16px";
     if (typeof fontSize === "number") {

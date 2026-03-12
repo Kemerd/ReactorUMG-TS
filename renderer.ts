@@ -289,6 +289,20 @@ class UMGWidget {
         // Track the child in our ordered list
         this.children.push(child);
 
+        // Inject structural pseudo-class metadata so :first-child, :last-child,
+        // :nth-child() selectors can be evaluated by the style resolver.
+        const childIndex = this.children.length - 1;
+        child.props.__childIndex = childIndex;
+        child.props.__childCount = this.children.length;
+
+        // Update sibling counts when a new child is added (previous children
+        // need their __childCount updated for :last-child to work correctly)
+        for (let i = 0; i < this.children.length - 1; i++) {
+            if (this.children[i].props) {
+                this.children[i].props.__childCount = this.children.length;
+            }
+        }
+
         // Set parent reference for event tree traversal
         child.parentUMGWidget = this;
 
