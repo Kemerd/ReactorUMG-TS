@@ -11,7 +11,7 @@ import { parseWidgetSelfAlignment } from "../parsers/alignment_parser";
 import { hasFontStyles, setupFontStyles, parseTextShadow } from "../parsers/css_font_parser";
 import { processBorderStyles, applyOutlineToBrush, parseBoxShadow } from "../parsers/css_border_parser";
 import { parseFilter, getBlurRadius, getCombinedBrightness, getCombinedOpacity, FilterFunction } from "../parsers/css_filter_parser";
-import { queueWidgetSync } from "../perf/batch_sync";
+import { queueWidgetSync, queueSlotSync } from "../perf/batch_sync";
 
 /**
  * Base class for all container (panel) converters. Implements shared
@@ -28,6 +28,22 @@ export class ContainerConverter extends ElementConverter {
     sizeBoxWidget: UE.Widget; // 保存sizebox容器
     scaleBoxWidget: UE.Widget; // 保存scalebox容器
     borderWidget: UE.Widget; // 保存border容器
+
+    /**
+     * Overlay wrapper for position:relative containers. In CSS, position:relative
+     * does NOT change layout mode — a flex container stays flex. It only creates
+     * a stacking context so absolute-positioned children can layer on top of the
+     * normal flow. We implement this by wrapping the flow layout widget in an
+     * Overlay: the flex/grid goes in as the first child (Fill), and any
+     * position:absolute children are added as subsequent overlay layers.
+     */
+    protected _relativeOverlay: UE.Overlay | null = null;
+
+    /**
+     * Tracks which child widgets were routed to the _relativeOverlay instead
+     * of the flow layout proxy. Used by removeChild to know where to detach.
+     */
+    protected _absoluteOverlayChildren: Set<UE.Widget> = new Set();
 
     /**
      * Children whose slot configuration was deferred because they were
@@ -70,11 +86,16 @@ export class ContainerConverter extends ElementConverter {
      * to the appropriate UMG container type.
      *
      * Mapping logic:
-     *   display: grid          -> GridConverter
-     *   position: absolute     -> CanvasConverter  (removed from flow)
-     *   position: fixed        -> CanvasConverter  (viewport-anchored)
-     *   position: relative     -> OverlayConverter (stays in flow, allows offsets)
-     *   position: static (default) -> FlexConverter (normal document flow)
+     *   display: grid            -> GridConverter
+     *   position: absolute/fixed -> CanvasConverter  (removed from flow)
+     *   position: relative       -> FlexConverter    (normal flow; overlay wrapper
+     *                               is added in createNativeWidget to support
+     *                               absolute-positioned children layered on top)
+     *   position: static (default) -> FlexConverter  (normal document flow)
+     *
+     * IMPORTANT: position:relative does NOT change the layout mode. In CSS,
+     * a flex container with position:relative is still a flex container — it
+     * just creates a new stacking context for absolute children.
      */
     private parseContainerType(type: string) {
         const normalizedType = (type || '').toLowerCase();
@@ -98,20 +119,16 @@ export class ContainerConverter extends ElementConverter {
                 return 'grid';
             }
 
-            // CSS position determines the container strategy
+            // Only position:absolute/fixed changes the container strategy to canvas.
+            // position:relative keeps the display-based layout (flex/grid) and the
+            // overlay wrapper for absolute children is handled separately.
             const position = (this.containerStyle?.position || 'static').toString().trim().toLowerCase();
 
-            switch (position) {
-                case 'absolute':
-                case 'fixed':
-                    return 'canvas';
-                case 'relative':
-                    return 'overlay';
-                case 'static':
-                case 'sticky':
-                default:
-                    return 'flex';
+            if (position === 'absolute' || position === 'fixed') {
+                return 'canvas';
             }
+
+            return 'flex';
         } else {
             return normalizedType;
         }
@@ -599,6 +616,21 @@ export class ContainerConverter extends ElementConverter {
             widget = this.proxy.createNativeWidget();
             this.originalWidget = widget;
 
+            // When position:relative is set, wrap the flow layout widget in an
+            // Overlay so that absolute-positioned children can be layered on top
+            // of the normal flex/grid flow. The flow widget fills the overlay as
+            // the first child; absolute children are added later via appendChild.
+            const position = (this.containerStyle?.position || '').toString().trim().toLowerCase();
+            if (position === 'relative' && widget) {
+                this._relativeOverlay = new UE.Overlay(this.outer);
+                const flowSlot = this._relativeOverlay.AddChildToOverlay(widget);
+                if (flowSlot) {
+                    flowSlot.SetHorizontalAlignment(UE.EHorizontalAlignment.HAlign_Fill);
+                    flowSlot.SetVerticalAlignment(UE.EVerticalAlignment.VAlign_Fill);
+                }
+                widget = this._relativeOverlay;
+            }
+
             // Wrap in ScrollBox if overflow:scroll/auto is specified
             if (widget) {
                 widget = this.setupScrollOverflow(widget);
@@ -752,6 +784,26 @@ export class ContainerConverter extends ElementConverter {
         if (this.proxy) {
             this.initClipChildWidget(parent);
             this.initChildAlignmentForExternalSlot(childProps);
+
+            // When this container has position:relative, check if the child
+            // is absolutely positioned. If so, route it to the overlay wrapper
+            // instead of the flow layout — matching CSS stacking context semantics.
+            if (this._relativeOverlay) {
+                const childStyle = getAllStyles(childTypeName, childProps);
+                const childPos = (childStyle?.position || '').toString().trim().toLowerCase();
+
+                if (childPos === 'absolute' || childPos === 'fixed') {
+                    this._appendAbsoluteChild(child, childStyle);
+                    this._absoluteOverlayChildren.add(child);
+
+                    // Still apply inherited text styles for inline text children
+                    if (!this.isChildCollapsed(child) && childProps["_children_text_instance"]) {
+                        this._applyTextInstanceStyles(child);
+                    }
+                    return;
+                }
+            }
+
             this.proxy.appendChild(this.originalWidget, child, childTypeName, childProps);
         }
 
@@ -883,10 +935,65 @@ export class ContainerConverter extends ElementConverter {
         queueWidgetSync(child);
     }
 
+    /**
+     * Adds an absolute-positioned child to the _relativeOverlay wrapper.
+     * Computes alignment and padding from CSS left/top/right/bottom values
+     * to approximate the absolute positioning within the overlay.
+     *
+     * @param child      The native child widget to add
+     * @param childStyle The resolved CSS styles for the child
+     */
+    private _appendAbsoluteChild(child: UE.Widget, childStyle: any): void {
+        if (!this._relativeOverlay) return;
+
+        const overlaySlot = this._relativeOverlay.AddChildToOverlay(child);
+        if (!overlaySlot) return;
+
+        // Determine which edges are specified to infer alignment
+        const hasLeft   = childStyle?.left   !== undefined && childStyle.left   !== null;
+        const hasRight  = childStyle?.right  !== undefined && childStyle.right  !== null;
+        const hasTop    = childStyle?.top    !== undefined && childStyle.top    !== null;
+        const hasBottom = childStyle?.bottom !== undefined && childStyle.bottom !== null;
+
+        // Horizontal alignment: if both left and right are set, fill (stretch).
+        // Otherwise align to the specified edge.
+        if (hasLeft && hasRight) {
+            overlaySlot.SetHorizontalAlignment(UE.EHorizontalAlignment.HAlign_Fill);
+        } else if (hasRight && !hasLeft) {
+            overlaySlot.SetHorizontalAlignment(UE.EHorizontalAlignment.HAlign_Right);
+        } else {
+            overlaySlot.SetHorizontalAlignment(UE.EHorizontalAlignment.HAlign_Left);
+        }
+
+        // Vertical alignment: if both top and bottom are set, fill (stretch).
+        // Otherwise align to the specified edge.
+        if (hasTop && hasBottom) {
+            overlaySlot.SetVerticalAlignment(UE.EVerticalAlignment.VAlign_Fill);
+        } else if (hasBottom && !hasTop) {
+            overlaySlot.SetVerticalAlignment(UE.EVerticalAlignment.VAlign_Bottom);
+        } else {
+            overlaySlot.SetVerticalAlignment(UE.EVerticalAlignment.VAlign_Top);
+        }
+
+        // Convert CSS offsets to padding on the overlay slot
+        const leftPx   = hasLeft   ? convertLengthUnitToSlateUnit(childStyle.left,   childStyle) : 0;
+        const topPx    = hasTop    ? convertLengthUnitToSlateUnit(childStyle.top,    childStyle) : 0;
+        const rightPx  = hasRight  ? convertLengthUnitToSlateUnit(childStyle.right,  childStyle) : 0;
+        const bottomPx = hasBottom ? convertLengthUnitToSlateUnit(childStyle.bottom, childStyle) : 0;
+
+        overlaySlot.SetPadding(new UE.Margin(leftPx, topPx, rightPx, bottomPx));
+        queueSlotSync(overlaySlot);
+    }
+
     removeChild(parent: UE.Widget, child: UE.Widget): void {
-        // Delegate to the proxy so subclass converters (e.g. OverlayConverter)
-        // can clean up internal tracking maps (absoluteChildren, etc.)
-        if (this.proxy) {
+        // If this child was routed to the position:relative overlay,
+        // detach it from there instead of from the flow layout proxy.
+        if (this._absoluteOverlayChildren.has(child)) {
+            this._absoluteOverlayChildren.delete(child);
+            child.RemoveFromParent();
+        } else if (this.proxy) {
+            // Delegate to the proxy so subclass converters (e.g. OverlayConverter)
+            // can clean up internal tracking maps (absoluteChildren, etc.)
             this.proxy.removeChild(this.originalWidget, child);
         } else {
             child.RemoveFromParent();
