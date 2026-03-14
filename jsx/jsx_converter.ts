@@ -214,6 +214,28 @@ export class JSXConverter extends ElementConverter {
             }
         }
 
+        // Text overflow policy (ellipsis / clip)
+        const textOverflow = styles?.textOverflow;
+        if (textOverflow) {
+            const normalized = String(textOverflow).toLowerCase().trim();
+            if (normalized === 'ellipsis') {
+                child.SetTextOverflowPolicy(UE.ETextOverflowPolicy.Ellipsis);
+            } else if (normalized === 'clip') {
+                child.SetTextOverflowPolicy(UE.ETextOverflowPolicy.Clip);
+            }
+        }
+
+        // Word break / overflow wrap
+        const wordBreak = styles?.wordBreak ?? styles?.overflowWrap;
+        if (wordBreak) {
+            const normalized = String(wordBreak).toLowerCase().trim();
+            if (normalized === 'break-all' || normalized === 'break-word') {
+                child.AutoWrapText = true;
+            } else if (normalized === 'keep-all' || normalized === 'nowrap') {
+                child.AutoWrapText = false;
+            }
+        }
+
         queueWidgetSync(child);
     }
 
